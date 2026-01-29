@@ -25,9 +25,9 @@ async fn main() -> anyhow::Result<()> {
     let max_diff_length: usize = get_config(&pool, "max_diff_length")
         .await
         .context("Failed to get max_diff_length from config")?
-        .unwrap_or_else(|| "32000".to_string())
+        .unwrap_or_else(|| "1000000".to_string())
         .parse()
-        .unwrap_or(32000);
+        .unwrap_or(1000000);
 
     if diff_text.len() > max_diff_length {
         eprintln!(

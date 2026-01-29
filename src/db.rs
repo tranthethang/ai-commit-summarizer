@@ -32,7 +32,7 @@ async fn seed_defaults(pool: &SqlitePool) -> Result<(), sqlx::Error> {
         ("ai_temperature", "0.1"),
         ("ai_num_predict", "250"),
         ("ai_top_p", "0.9"),
-        ("max_diff_length", "32000"),
+        ("max_diff_length", "1000000"),
     ];
 
     for (key, value) in defaults {
