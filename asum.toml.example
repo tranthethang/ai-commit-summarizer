@@ -1,5 +1,5 @@
 [general]
-active_provider = "gemini"
+active_provider = "ollama"
 max_diff_length = 36000
 
 [ai_params]
@@ -9,7 +9,6 @@ top_p = 0.9
 
 [gemini]
 api_key = ""
-api_model = "gemini-2.0-flash"
 model = "gemini-2.0-flash"
 
 [ollama]
