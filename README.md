@@ -1,15 +1,16 @@
 # asum (AI Commit Summarizer)
 
-**asum** is a lightweight CLI tool written in Rust that automatically generates professional git commit messages using local AI models. It helps developers maintain a clean and consistent commit history without the manual effort of summarizing changes.
+**asum** is a lightweight CLI tool written in Rust that automatically generates professional git commit messages using AI models. It helps developers maintain a clean and consistent commit history without the manual effort of summarizing changes.
 
 ---
 
 ## Features
 
-- **Local AI**: Uses [Ollama](https://ollama.com/) to run models locally (default: `llama3.2:1b`), ensuring your code stays private.
+- **Multi-Backend Support**: Supports both local [Ollama](https://ollama.com/) models and [Google Gemini API](https://ai.google.dev/).
+- **Strategy Pattern**: Modular architecture allows for easy extension to other AI providers.
 - **Smart Filtering**: Automatically filters `git diff` to focus on relevant source code while ignoring lock files and binaries.
 - **Clipboard Integration**: Automatically copies the generated commit message to your system clipboard.
-- **Configurable**: Easily adjust AI parameters and system settings via a `.env` file.
+- **Persistent Configuration**: Stores settings in a local SQLite database (`asum.db`).
 
 ---
 
@@ -18,11 +19,9 @@
 Before installing, ensure you have the following tools set up:
 
 1. **Rust & Cargo**: [Install Rust](https://www.rust-lang.org/tools/install)
-2. **Ollama**: [Download Ollama](https://ollama.com/) and ensure it is running.
-3. **AI Model**: Pull the default model used by the tool:
-   ```bash
-   ollama pull llama3.2:1b
-   ```
+2. **AI Provider**:
+   - **Ollama**: [Download Ollama](https://ollama.com/) and pull a model (e.g., `ollama pull llama3.2:1b`).
+   - **Gemini**: Obtain an API key from [Google AI Studio](https://aistudio.google.com/).
 
 ---
 
@@ -34,12 +33,7 @@ Before installing, ensure you have the following tools set up:
    cd ai-commit-summarizer
    ```
 
-2. **Configure environment**:
-   ```bash
-   cp .env.example .env
-   ```
-
-3. **Run the installer**:
+2. **Run the installer**:
    ```bash
    chmod +x install.sh
    ./install.sh
@@ -57,9 +51,26 @@ git add .
 asum
 ```
 
-![asum screenshot](./screenshot.png)
-
 The tool will analyze your staged changes, display a suggested commit message, and copy it to your clipboard. You can then simply press `Cmd+V` (or `Ctrl+V`) to paste it into your `git commit` command.
+
+---
+
+## Configuration
+
+Settings are stored in `asum.db`. On the first run, the tool initializes the database with default values.
+
+### Default Config
+- `active_provider`: `ollama`
+- `ollama_url`: `http://localhost:11434/api/generate`
+- `ollama_model`: `llama3.2:1b`
+- `gemini_model`: `gemini-1.5-flash`
+
+### Switching to Gemini
+To use Gemini, you need to update the database:
+```bash
+sqlite3 asum.db "UPDATE config SET value = 'gemini' WHERE key = 'active_provider';"
+sqlite3 asum.db "UPDATE config SET value = 'YOUR_GEMINI_API_KEY' WHERE key = 'gemini_api_key';"
+```
 
 ---
 
@@ -71,13 +82,3 @@ To remove the tool from your system:
 chmod +x uninstall.sh
 ./uninstall.sh
 ```
-
----
-
-## Configuration
-
-You can customize the tool by editing the `.env` file:
-
-- `OLLAMA_MODEL`: Change the AI model (e.g., `llama3:8b`).
-- `AI_TEMPERATURE`: Adjust the creativity of the AI.
-- `MAX_DIFF_LENGTH`: Limit the size of the diff sent to the AI.
