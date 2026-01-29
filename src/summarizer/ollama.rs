@@ -1,4 +1,4 @@
-use crate::summarizer::{AIConfig, Summarizer};
+use crate::summarizer::{AIConfig, Summarizer, generate_prompt};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
@@ -20,25 +20,7 @@ impl OllamaProvider {
 #[async_trait]
 impl Summarizer for OllamaProvider {
     async fn summarize(&self, diff: &str) -> anyhow::Result<String> {
-        let prompt = format!(
-            "SYSTEM: You are a professional Git Commit Generator.
-RULES:
-1. Output ONLY a bulleted list of changes.
-2. Max 10 items.
-3. Use Conventional Commits format (feat:, fix:, refactor:, etc.).
-4. NO code snippets, NO preamble, NO explanations, NO echo of the input.
-5. Use plain text only, NO emojis.
-
-EXAMPLE OUTPUT:
-- feat: add ollama api integration for rust
-- fix: handle null pointer in java controller
-- refactor: optimize scss variables for dark mode
-
-INPUT DIFF:
-{}
-",
-            diff
-        );
+        let prompt = generate_prompt(diff);
 
         let url = self
             .config

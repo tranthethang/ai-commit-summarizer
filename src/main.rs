@@ -42,7 +42,14 @@ async fn main() -> anyhow::Result<()> {
                 println!("  asum help    Show this help message");
                 return Ok(());
             }
-            _ => {}
+            _ => {
+                eprintln!("[ERROR] Unknown command: {}", args[1]);
+                println!("\nUsage:");
+                println!("  asum         Generate commit summary from staged changes");
+                println!("  asum verify  Verify the syntax of asum.toml");
+                println!("  asum help    Show this help message");
+                std::process::exit(1);
+            }
         }
     }
 

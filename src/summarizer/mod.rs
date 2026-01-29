@@ -54,3 +54,28 @@ pub async fn get_summarizer(config: AsumConfig) -> anyhow::Result<Box<dyn Summar
         _ => Err(anyhow::anyhow!("Unknown provider: {}", provider)),
     }
 }
+
+pub fn generate_prompt(diff: &str) -> String {
+    format!(
+        r#"You are a professional Git Commit Generator.
+Task: Analyze the [INPUT DIFF] below and generate a concise bulleted list of changes.
+
+Rules:
+1. Output ONLY a bulleted list of changes (starting with "- ").
+2. Maximum 10 items.
+3. Use Conventional Commits format (feat:, fix:, refactor:, chore:, docs:, etc.).
+4. NO preamble, NO explanations, NO code blocks, NO emojis.
+5. Focus ONLY on the changes provided in [INPUT DIFF].
+
+Examples of valid format:
+- feat: add logging to authentication flow
+- fix: resolve memory leak in connection pool
+- refactor: simplify configuration loading logic
+
+[INPUT DIFF]
+{}
+
+[OUTPUT]"#,
+        diff
+    )
+}
