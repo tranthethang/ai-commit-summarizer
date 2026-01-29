@@ -1,8 +1,7 @@
-use crate::db::get_config;
-use anyhow::Result;
+use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
 use std::fs;
+use std::path::Path;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AsumConfig {
@@ -51,26 +50,31 @@ struct OllamaConfig {
 }
 
 impl AsumConfig {
-    pub async fn load(pool: &SqlitePool) -> Result<Self> {
-        if std::path::Path::new("asum.toml").exists() {
-            match Self::load_from_toml("asum.toml") {
-                Ok(config) => {
-                    eprintln!("[INFO] Loaded configuration from asum.toml");
-                    return Ok(config);
-                }
-                Err(e) => {
-                    eprintln!(
-                        "[ERROR] Failed to parse asum.toml: {}. Falling back to database.",
-                        e
-                    );
-                }
-            }
+    pub fn load() -> Result<Self> {
+        // 1. Check local config
+        let local_path = Path::new("asum.toml");
+        if local_path.exists() {
+            return Self::load_from_toml(local_path)
+                .with_context(|| format!("Failed to load local config: {:?}", local_path));
         }
 
-        Self::load_from_db(pool).await
+        // 2. Check global config
+        let mut global_path =
+            home::home_dir().ok_or_else(|| anyhow!("Could not find home directory"))?;
+        global_path.push(".asum");
+        global_path.push("asum.toml");
+
+        if global_path.exists() {
+            return Self::load_from_toml(&global_path)
+                .with_context(|| format!("Failed to load global config: {:?}", global_path));
+        }
+
+        Err(anyhow!(
+            "Configuration file 'asum.toml' not found locally or in ~/.asum/asum.toml"
+        ))
     }
 
-    fn load_from_toml(path: &str) -> Result<Self> {
+    fn load_from_toml<P: AsRef<Path>>(path: P) -> Result<Self> {
         let content = fs::read_to_string(path)?;
         let toml_config: TomlConfig = toml::from_str(&content)?;
 
@@ -86,52 +90,9 @@ impl AsumConfig {
             gemini_model: toml_config.gemini.as_ref().map(|g| g.model.clone()),
         })
     }
-
-    async fn load_from_db(pool: &SqlitePool) -> Result<Self> {
-        let active_provider = get_config(pool, "active_provider")
-            .await?
-            .unwrap_or_else(|| "ollama".to_string());
-        let max_diff_length = get_config(pool, "max_diff_length")
-            .await?
-            .unwrap_or_default()
-            .parse()
-            .unwrap_or(1000000);
-        let ai_temperature = get_config(pool, "ai_temperature")
-            .await?
-            .unwrap_or_default()
-            .parse()
-            .unwrap_or(0.1);
-        let ai_top_p = get_config(pool, "ai_top_p")
-            .await?
-            .unwrap_or_default()
-            .parse()
-            .unwrap_or(0.9);
-        let ai_num_predict = get_config(pool, "ai_num_predict")
-            .await?
-            .unwrap_or_default()
-            .parse()
-            .unwrap_or(250);
-
-        let ollama_url = get_config(pool, "ollama_url").await?;
-        let ollama_model = get_config(pool, "ollama_model").await?;
-        let gemini_api_key = get_config(pool, "gemini_api_key").await?;
-        let gemini_model = get_config(pool, "gemini_api_model").await?;
-
-        Ok(AsumConfig {
-            active_provider,
-            max_diff_length,
-            ai_temperature,
-            ai_top_p,
-            ai_num_predict,
-            ollama_url,
-            ollama_model,
-            gemini_api_key,
-            gemini_model,
-        })
-    }
 }
 
-pub fn verify_toml(path: &str) -> Result<()> {
+pub fn verify_toml<P: AsRef<Path>>(path: P) -> Result<()> {
     let content = fs::read_to_string(path)?;
     let _: TomlConfig = toml::from_str(&content)?;
     Ok(())

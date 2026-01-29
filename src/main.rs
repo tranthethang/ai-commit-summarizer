@@ -1,10 +1,8 @@
 mod config;
-mod db;
 mod git;
 mod summarizer;
 
 use crate::config::{AsumConfig, verify_toml};
-use crate::db::init_db;
 use crate::git::get_git_diff;
 use crate::summarizer::get_summarizer;
 use anyhow::Context;
@@ -53,13 +51,8 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // Initialize Database
-    let pool = init_db().await.context("Failed to initialize database")?;
-
-    // Load Configuration (prioritize asum.toml)
-    let config = AsumConfig::load(&pool)
-        .await
-        .context("Failed to load configuration")?;
+    // Load Configuration (prioritize local asum.toml, then ~/.asum/asum.toml)
+    let config = AsumConfig::load().context("Failed to load configuration")?;
 
     // 1. Get git diff
     let mut diff_text = get_git_diff().context("Failed to get git diff")?;
