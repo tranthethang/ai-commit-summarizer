@@ -60,6 +60,7 @@ dependencies = [
  "anyhow",
  "arboard",
  "async-trait",
+ "home",
  "reqwest",
  "serde",
  "serde_json",

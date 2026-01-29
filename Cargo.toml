@@ -13,4 +13,5 @@ toml = "0.8"
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite"] }
 async-trait = "0.1"
 anyhow = "1.0"
+home = "0.5"
 

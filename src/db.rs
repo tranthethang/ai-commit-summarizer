@@ -1,8 +1,20 @@
 use sqlx::{SqlitePool, sqlite::SqliteConnectOptions};
+use std::fs;
 use std::str::FromStr;
 
 pub async fn init_db() -> Result<SqlitePool, sqlx::Error> {
-    let options = SqliteConnectOptions::from_str("sqlite:asum.db")?.create_if_missing(true);
+    let mut db_path = home::home_dir().expect("Could not find home directory");
+    db_path.push(".asum");
+
+    // Ensure directory exists
+    if !db_path.exists() {
+        fs::create_dir_all(&db_path).expect("Could not create database directory");
+    }
+
+    db_path.push("asum.db");
+    let db_url = format!("sqlite:{}", db_path.to_str().expect("Invalid path"));
+
+    let options = SqliteConnectOptions::from_str(&db_url)?.create_if_missing(true);
 
     let pool = SqlitePool::connect_with(options).await?;
 
