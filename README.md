@@ -10,7 +10,7 @@
 - **Strategy Pattern**: Modular architecture allows for easy extension to other AI providers.
 - **Smart Filtering**: Automatically filters `git diff` to focus on relevant source code while ignoring lock files and binaries.
 - **Clipboard Integration**: Automatically copies the generated commit message to your system clipboard.
-- **Persistent Configuration**: Stores settings in a local SQLite database (`asum.db`).
+- **Flexible Configuration**: Supports local and global `asum.toml` configuration files.
 
 ---
 
@@ -29,7 +29,7 @@ Before installing, ensure you have the following tools set up:
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/thangtt/ai-commit-summarizer.git
+   git clone https://github.com/tranthethang/ai-commit-summarizer.git
    cd ai-commit-summarizer
    ```
 
@@ -59,19 +59,42 @@ The tool will analyze your staged changes, display a suggested commit message, a
 
 ## Configuration
 
-Settings are stored in `asum.db`. On the first run, the tool initializes the database with default values.
+**asum** loads configuration from a file named `asum.toml`. It searches for this file in the following order:
 
-### Default Config
-- `active_provider`: `ollama`
-- `ollama_url`: `http://localhost:11434/api/generate`
-- `ollama_model`: `llama3.2:1b`
-- `gemini_model`: `gemini-1.5-flash`
+1.  **Local**: The current directory where you run the `asum` command.
+2.  **Global**: Your user home directory at `~/.asum/asum.toml`.
 
-### Switching to Gemini
-To use Gemini, you need to update the database:
+If neither is found, the tool will report an error.
+
+### Example Configuration
+
+You can use [asum.toml.example](./asum.toml.example) as a template:
+
+```toml
+[general]
+active_provider = "ollama"
+max_diff_length = 36000
+
+[ai_params]
+num_predict = 250
+temperature = 0.1
+top_p = 0.9
+
+[gemini]
+api_key = "YOUR_GEMINI_API_KEY"
+model = "gemini-2.0-flash"
+
+[ollama]
+model = "qwen2.5-coder:3b"
+url = "http://localhost:11434/api/generate"
+```
+
+### Verification
+
+You can verify the syntax of your `asum.toml` file by running:
+
 ```bash
-sqlite3 asum.db "UPDATE config SET value = 'gemini' WHERE key = 'active_provider';"
-sqlite3 asum.db "UPDATE config SET value = 'YOUR_GEMINI_API_KEY' WHERE key = 'gemini_api_key';"
+asum verify
 ```
 
 ---
