@@ -57,6 +57,8 @@ git add .
 asum
 ```
 
+![asum screenshot](./screenshot.png)
+
 The tool will analyze your staged changes, display a suggested commit message, and copy it to your clipboard. You can then simply press `Cmd+V` (or `Ctrl+V`) to paste it into your `git commit` command.
 
 ---

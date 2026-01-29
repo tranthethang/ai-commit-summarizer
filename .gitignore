@@ -22,3 +22,6 @@ target
 .zencoder/
 
 .env
+
+# System files
+.DS_Store
