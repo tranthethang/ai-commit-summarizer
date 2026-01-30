@@ -20,7 +20,7 @@ Before installing, ensure you have the following tools set up:
 
 1. **Rust & Cargo**: [Install Rust](https://www.rust-lang.org/tools/install)
 2. **AI Provider**:
-   - **Ollama**: [Download Ollama](https://ollama.com/) and pull a model (e.g., `ollama pull llama3.2:1b`).
+   - **Ollama**: [Download Ollama](https://ollama.com/) and pull a model (e.g., `ollama pull qwen2.5-coder:3b`).
    - **Gemini**: Obtain an API key from [Google AI Studio](https://aistudio.google.com/).
 
 ---

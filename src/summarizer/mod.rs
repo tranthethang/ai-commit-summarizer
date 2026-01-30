@@ -3,6 +3,7 @@ pub mod ollama;
 
 use crate::config::AsumConfig;
 use async_trait::async_trait;
+use tracing::info;
 
 #[derive(Debug, Clone)]
 pub struct AIConfig {
@@ -12,6 +13,7 @@ pub struct AIConfig {
     pub num_predict: i32,
     pub api_url: Option<String>,
     pub api_key: Option<String>,
+    pub prompt: String,
 }
 
 #[async_trait]
@@ -35,17 +37,18 @@ pub async fn get_summarizer(config: AsumConfig) -> anyhow::Result<Box<dyn Summar
         num_predict: config.ai_num_predict,
         api_url: config.ollama_url.clone(),
         api_key: config.gemini_api_key.clone(),
+        prompt: config.prompt.clone(),
     };
 
-    eprintln!("[INFO] Using provider: {}", provider);
-    eprintln!("[INFO] Using model: {}", ai_config.model);
+    info!("Using provider: {}", provider);
+    info!("Using model: {}", ai_config.model);
     if let Some(key) = ai_config.api_key.as_ref().filter(|k| !k.is_empty()) {
         let masked_key = if key.len() > 8 {
             format!("{}...{}", &key[..4], &key[key.len() - 4..])
         } else {
             "****".to_string()
         };
-        eprintln!("[INFO] Using API key: {}", masked_key);
+        info!("Using API key: {}", masked_key);
     }
 
     match provider.as_str() {
@@ -55,27 +58,6 @@ pub async fn get_summarizer(config: AsumConfig) -> anyhow::Result<Box<dyn Summar
     }
 }
 
-pub fn generate_prompt(diff: &str) -> String {
-    format!(
-        r#"You are a professional Git Commit Generator.
-Task: Analyze the [INPUT DIFF] below and generate a concise bulleted list of changes.
-
-Rules:
-1. Output ONLY a bulleted list of changes (starting with "- ").
-2. Maximum 10 items.
-3. Use Conventional Commits format (feat:, fix:, refactor:, chore:, docs:, etc.).
-4. NO preamble, NO explanations, NO code blocks, NO emojis.
-5. Focus ONLY on the changes provided in [INPUT DIFF].
-
-Examples of valid format:
-- feat: add logging to authentication flow
-- fix: resolve memory leak in connection pool
-- refactor: simplify configuration loading logic
-
-[INPUT DIFF]
-{}
-
-[OUTPUT]"#,
-        diff
-    )
+pub fn generate_prompt(prompt_template: &str, diff: &str) -> String {
+    prompt_template.replace("{{diff}}", diff)
 }

@@ -1,6 +1,12 @@
 [general]
 active_provider = "ollama"
 max_diff_length = 36000
+# Optional: List of file extensions to include in git diff
+# git_extensions = ["*.rs", "*.js", "*.ts", "*.py", "*.go"]
+
+[prompt]
+# Optional: Customize your commit message prompt. Use {{diff}} as placeholder for git changes.
+# custom_prompt = "Analyze the [INPUT DIFF] below and generate a concise bulleted list of changes: {{diff}}"
 
 [ai_params]
 num_predict = 250

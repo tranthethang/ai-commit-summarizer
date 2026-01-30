@@ -8,9 +8,26 @@ use crate::summarizer::get_summarizer;
 use anyhow::Context;
 use arboard::Clipboard;
 use std::env;
+use tracing::{error, info, warn};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Initialize logging
+    let mut log_dir = home::home_dir().context("Could not find home directory")?;
+    log_dir.push(".asum");
+    log_dir.push("logs");
+    std::fs::create_dir_all(&log_dir).context("Failed to create log directory")?;
+
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "asum.log");
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+
+    tracing_subscriber::registry()
+        .with(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
+        .with(fmt::layer().with_writer(std::io::stderr).with_target(false))
+        .with(fmt::layer().with_writer(non_blocking).with_ansi(false))
+        .init();
+
     let args: Vec<String> = env::args().collect();
 
     if args.len() > 1 {
@@ -23,12 +40,12 @@ async fn main() -> anyhow::Result<()> {
                             return Ok(());
                         }
                         Err(e) => {
-                            eprintln!("[ERROR] asum.toml syntax error: {}", e);
+                            error!("asum.toml syntax error: {}", e);
                             std::process::exit(1);
                         }
                     }
                 } else {
-                    eprintln!("[ERROR] asum.toml not found in the current directory.");
+                    error!("asum.toml not found in the current directory.");
                     std::process::exit(1);
                 }
             }
@@ -41,7 +58,7 @@ async fn main() -> anyhow::Result<()> {
                 return Ok(());
             }
             _ => {
-                eprintln!("[ERROR] Unknown command: {}", args[1]);
+                error!("Unknown command: {}", args[1]);
                 println!("\nUsage:");
                 println!("  asum         Generate commit summary from staged changes");
                 println!("  asum verify  Verify the syntax of asum.toml");
@@ -55,10 +72,10 @@ async fn main() -> anyhow::Result<()> {
     let config = AsumConfig::load().context("Failed to load configuration")?;
 
     // 1. Get git diff
-    let mut diff_text = get_git_diff().context("Failed to get git diff")?;
+    let mut diff_text = get_git_diff(&config.git_extensions).context("Failed to get git diff")?;
 
     if diff_text.is_empty() {
-        eprintln!("[WARN] No staged changes found in supported code files.");
+        warn!("No staged changes found in supported code files.");
         return Ok(());
     }
 
@@ -66,18 +83,16 @@ async fn main() -> anyhow::Result<()> {
     let max_diff_length = config.max_diff_length;
 
     if diff_text.len() > max_diff_length {
-        eprintln!(
-            "[INFO] Diff is too large ({} bytes), truncating to {} bytes for AI...",
+        info!(
+            "Diff is too large ({} bytes), truncating to {} bytes for AI...",
             diff_text.len(),
             max_diff_length
         );
-        eprintln!(
-            "[INFO] You can increase this limit by updating 'max_diff_length' in your config."
-        );
+        info!("You can increase this limit by updating 'max_diff_length' in your config.");
         diff_text = diff_text.chars().take(max_diff_length).collect();
     }
 
-    eprintln!("[INFO] AI is analyzing your changes...");
+    info!("AI is analyzing your changes...");
 
     // 3. Get Summarizer (Strategy Pattern)
     let summarizer = get_summarizer(config)
@@ -92,14 +107,14 @@ async fn main() -> anyhow::Result<()> {
             // 5. Copy to Clipboard
             if let Ok(mut clipboard) = Clipboard::new() {
                 if let Err(e) = clipboard.set_text(final_msg) {
-                    eprintln!("[ERROR] Could not copy to clipboard: {}", e);
+                    error!("Could not copy to clipboard: {}", e);
                 } else {
-                    eprintln!("[DONE] Message copied to clipboard. Press Cmd+V to paste.");
+                    info!("Message copied to clipboard. Press Cmd+V to paste.");
                 }
             }
         }
         Err(e) => {
-            eprintln!("[ERROR] Summarization failed: {}", e);
+            error!("Summarization failed: {}", e);
         }
     }
 

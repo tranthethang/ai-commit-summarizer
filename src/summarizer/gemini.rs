@@ -5,6 +5,7 @@ use reqwest::Client;
 use serde_json::json;
 use std::time::Duration;
 use tokio::time::sleep;
+use tracing::warn;
 
 pub struct GeminiProvider {
     config: AIConfig,
@@ -29,7 +30,7 @@ impl Summarizer for GeminiProvider {
             .as_deref()
             .context("Gemini API key is missing")?;
 
-        let prompt = generate_prompt(diff);
+        let prompt = generate_prompt(&self.config.prompt, diff);
 
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
@@ -61,8 +62,8 @@ impl Summarizer for GeminiProvider {
 
             if res.status() == reqwest::StatusCode::TOO_MANY_REQUESTS && retries < max_retries {
                 retries += 1;
-                eprintln!(
-                    "[WARN] Gemini API rate limited (429). Retrying in {}s... (Attempt {}/{})",
+                warn!(
+                    "Gemini API rate limited (429). Retrying in {}s... (Attempt {}/{})",
                     backoff, retries, max_retries
                 );
                 sleep(Duration::from_secs(backoff)).await;

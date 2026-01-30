@@ -20,7 +20,7 @@ impl OllamaProvider {
 #[async_trait]
 impl Summarizer for OllamaProvider {
     async fn summarize(&self, diff: &str) -> anyhow::Result<String> {
-        let prompt = generate_prompt(diff);
+        let prompt = generate_prompt(&self.config.prompt, diff);
 
         let url = self
             .config
