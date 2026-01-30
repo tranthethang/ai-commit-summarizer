@@ -168,3 +168,282 @@ pub fn verify_toml<P: AsRef<Path>>(path: P) -> Result<()> {
     let _: TomlConfig = toml::from_str(&content)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_load_from_toml_full() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(
+            file,
+            r#"
+            [general]
+            active_provider = "gemini"
+            max_diff_length = 1000
+            git_extensions = [".rs", ".py"]
+
+            [ai_params]
+            num_predict = 100
+            temperature = 0.5
+            top_p = 0.9
+
+            [gemini]
+            api_key = "test_key"
+            model = "gemini-pro"
+            "#
+        )
+        .unwrap();
+
+        let config = AsumConfig::load_from_toml(file.path()).unwrap();
+        assert_eq!(config.active_provider, "gemini");
+        assert_eq!(config.max_diff_length, 1000);
+        assert_eq!(config.git_extensions, vec![".rs", ".py"]);
+        assert_eq!(config.gemini_api_key.unwrap(), "test_key");
+        assert_eq!(config.gemini_model.unwrap(), "gemini-pro");
+    }
+
+    #[test]
+    fn test_load_from_toml_defaults() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(
+            file,
+            r#"
+            [general]
+            active_provider = "ollama"
+            max_diff_length = 2000
+
+            [ai_params]
+            num_predict = 50
+            temperature = 0.7
+            top_p = 1.0
+            "#
+        )
+        .unwrap();
+
+        let config = AsumConfig::load_from_toml(file.path()).unwrap();
+        assert_eq!(config.active_provider, "ollama");
+        // Check if default extensions are loaded
+        assert!(!config.git_extensions.is_empty());
+        assert!(config.git_extensions.contains(&"*.rs".to_string()));
+        // Check if default system prompt is loaded
+        assert!(config.system_prompt.contains("expert Git Commit Generator"));
+    }
+
+    #[test]
+    fn test_verify_toml_table_driven() {
+        struct TestCase {
+            name: &'static str,
+            content: &'static str,
+            is_ok: bool,
+        }
+
+        let cases = vec![
+            TestCase {
+                name: "valid full config",
+                content: r#"
+                    [general]
+                    active_provider = "ollama"
+                    max_diff_length = 2000
+                    [ai_params]
+                    num_predict = 50
+                    temperature = 0.7
+                    top_p = 1.0
+                "#,
+                is_ok: true,
+            },
+            TestCase {
+                name: "missing general section",
+                content: r#"
+                    [ai_params]
+                    num_predict = 50
+                    temperature = 0.7
+                    top_p = 1.0
+                "#,
+                is_ok: false,
+            },
+            TestCase {
+                name: "invalid toml syntax",
+                content: "invalid = [",
+                is_ok: false,
+            },
+        ];
+
+        for case in cases {
+            let mut file = NamedTempFile::new().unwrap();
+            writeln!(file, "{}", case.content).unwrap();
+            let result = verify_toml(file.path());
+            assert_eq!(
+                result.is_ok(),
+                case.is_ok,
+                "Failed test case: {}",
+                case.name
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "No such file or directory")]
+    fn test_load_from_toml_non_existent() {
+        AsumConfig::load_from_toml("non_existent_file.toml").unwrap();
+    }
+
+    #[test]
+    fn test_load_from_toml_minimal() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(
+            file,
+            r#"
+            [general]
+            active_provider = "ollama"
+            max_diff_length = 500
+
+            [ai_params]
+            num_predict = 10
+            temperature = 0.1
+            top_p = 0.1
+            "#
+        )
+        .unwrap();
+
+        let config = AsumConfig::load_from_toml(file.path()).unwrap();
+        assert_eq!(config.active_provider, "ollama");
+        assert_eq!(config.max_diff_length, 500);
+        assert_eq!(config.ai_num_predict, 10);
+        assert!(config.ollama_url.is_none());
+        assert!(config.gemini_api_key.is_none());
+    }
+
+    #[test]
+    fn test_load_from_toml_with_custom_prompts() {
+        let mut file = NamedTempFile::new().unwrap();
+        let toml_content = r#"
+            [general]
+            active_provider = "ollama"
+            max_diff_length = 1000
+
+            [ai_params]
+            num_predict = 100
+            temperature = 0.7
+            top_p = 1.0
+
+            [prompts]
+            system_prompt = "Custom system prompt"
+            user_prompt = "Custom user prompt: {{diff}}"
+            "#;
+        writeln!(file, "{}", toml_content).unwrap();
+
+        let config = AsumConfig::load_from_toml(file.path()).unwrap();
+        if config.user_prompt != "Custom user prompt: {{diff}}" {
+            panic!(
+                "CONTENT: [{}], PARSED: [{}]",
+                toml_content, config.user_prompt
+            );
+        }
+        assert_eq!(config.system_prompt, "Custom system prompt");
+    }
+
+    #[test]
+    fn test_asum_config_load_local() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("asum.toml");
+        let mut file = fs::File::create(config_path).unwrap();
+        writeln!(
+            file,
+            r#"
+            [general]
+            active_provider = "ollama"
+            max_diff_length = 1000
+            [ai_params]
+            num_predict = 100
+            temperature = 0.7
+            top_p = 1.0
+            "#
+        )
+        .unwrap();
+
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+
+        let result = AsumConfig::load();
+
+        std::env::set_current_dir(original_dir).unwrap();
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().active_provider, "ollama");
+    }
+
+    #[test]
+    fn test_asum_config_load_global() {
+        let temp_home =
+            std::env::temp_dir().join(format!("fake_home_global_{}", std::process::id()));
+        fs::create_dir_all(temp_home.join(".asum")).unwrap();
+        let config_path = temp_home.join(".asum").join("asum.toml");
+
+        let mut file = fs::File::create(&config_path).unwrap();
+        writeln!(
+            file,
+            r#"
+            [general]
+            active_provider = "ollama"
+            max_diff_length = 500
+            [ai_params]
+            num_predict = 100
+            temperature = 0.7
+            top_p = 1.0
+            "#
+        )
+        .unwrap();
+
+        let temp_cwd = std::env::temp_dir().join(format!("empty_cwd_{}", std::process::id()));
+        fs::create_dir_all(&temp_cwd).unwrap();
+
+        let old_cwd = env::current_dir().unwrap();
+        env::set_current_dir(&temp_cwd).unwrap();
+
+        let old_home = env::var("HOME").ok();
+        unsafe { env::set_var("HOME", &temp_home) };
+
+        let result = AsumConfig::load();
+
+        // Restore
+        env::set_current_dir(old_cwd).unwrap();
+        if let Some(val) = old_home {
+            unsafe { env::set_var("HOME", val) };
+        } else {
+            unsafe { env::remove_var("HOME") };
+        }
+
+        let config = result.expect("Should load global config");
+        assert_eq!(config.active_provider, "ollama");
+        assert_eq!(config.max_diff_length, 500);
+    }
+
+    #[test]
+    fn test_asum_config_load_no_config() {
+        let temp_dir = std::env::temp_dir().join(format!("no_config_test_{}", std::process::id()));
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let old_cwd = env::current_dir().unwrap();
+        env::set_current_dir(&temp_dir).unwrap();
+
+        let old_home = env::var("HOME").ok();
+        unsafe { env::set_var("HOME", &temp_dir) }; // Point HOME to empty temp dir
+
+        let result = AsumConfig::load();
+
+        env::set_current_dir(old_cwd).unwrap();
+        if let Some(val) = old_home {
+            unsafe { env::set_var("HOME", val) };
+        } else {
+            unsafe { env::remove_var("HOME") };
+        }
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+}

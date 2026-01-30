@@ -105,6 +105,36 @@ asum verify
 
 ---
 
+## Testing & Coverage
+
+**asum** includes a comprehensive suite of tests to ensure stability and correctness.
+
+### Running Tests
+
+To run the automated tests, use the standard cargo command:
+
+```bash
+cargo test
+```
+
+### Coverage Report
+
+To generate a detailed HTML coverage report, you can use the provided `coverage.sh` script. This script uses `grcov` to aggregate coverage data.
+
+**Prerequisites:**
+- `grcov`: `cargo install grcov`
+- `llvm-tools-preview`: `rustup component add llvm-tools-preview`
+
+**Generate Report:**
+```bash
+chmod +x coverage.sh
+./coverage.sh
+```
+
+After running the script, you can find the HTML report at `./coverage/index.html`.
+
+---
+
 ## Uninstallation
 
 To remove the tool from your system:
