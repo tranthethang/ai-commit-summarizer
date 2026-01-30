@@ -1,16 +1,18 @@
 # asum (AI Commit Summarizer)
 
-**asum** is a lightweight CLI tool written in Rust that automatically generates professional git commit messages using AI models. It helps developers maintain a clean and consistent commit history without the manual effort of summarizing changes.
+**asum** is a lightweight CLI tool written in Rust that automatically generates professional git commit messages using AI models. It helps developers maintain a clean and consistent commit history by following the **Conventional Commits 1.0.0** specification.
 
 ---
 
 ## Features
 
-- **Multi-Backend Support**: Supports both local [Ollama](https://ollama.com/) models and [Google Gemini API](https://ai.google.dev/).
+- **Conventional Commits 1.0.0**: Generates messages with strict `<type>(<scope>): <description>` headers and optional bodies.
+- **Advanced Prompting**: Uses **Few-shot Prompting** and **System Instructions** to ensure high-quality and consistent output.
+- **Multi-Backend Support**: Supports both local [Ollama](https://ollama.com/) (via Chat API) and [Google Gemini API](https://ai.google.dev/) (via System Instructions).
 - **Strategy Pattern**: Modular architecture allows for easy extension to other AI providers.
 - **Smart Filtering**: Automatically filters `git diff` to focus on relevant source code while ignoring lock files and binaries.
 - **Clipboard Integration**: Automatically copies the generated commit message to your system clipboard.
-- **Flexible Configuration**: Supports local and global `asum.toml` configuration files.
+- **Flexible Configuration**: Supports local and global `asum.toml` configuration files with separate system and user prompt templates.
 
 ---
 
@@ -64,8 +66,6 @@ The tool will analyze your staged changes, display a suggested commit message, a
 1.  **Local**: The current directory where you run the `asum` command.
 2.  **Global**: Your user home directory at `~/.asum/asum.toml`.
 
-If neither is found, the tool will report an error.
-
 ### Example Configuration
 
 You can use [asum.toml.example](./asum.toml.example) as a template:
@@ -75,8 +75,14 @@ You can use [asum.toml.example](./asum.toml.example) as a template:
 active_provider = "ollama"
 max_diff_length = 36000
 
+[prompts]
+# Optional: Identity and rules for the AI
+# system_prompt = "You are an expert Git Commit Generator..."
+# Optional: Template for the user message. Use {{diff}} as placeholder.
+# user_prompt = "[INPUT DIFF]\n{{diff}}\n\n[OUTPUT]"
+
 [ai_params]
-num_predict = 250
+num_predict = 500
 temperature = 0.1
 top_p = 0.9
 
@@ -86,7 +92,7 @@ model = "gemini-2.0-flash"
 
 [ollama]
 model = "qwen2.5-coder:3b"
-url = "http://localhost:11434/api/generate"
+url = "http://localhost:11434/api/chat"
 ```
 
 ### Verification
