@@ -17,3 +17,12 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 
+[dev-dependencies]
+tempfile = "3"
+mockall = "0.11"
+
+[package.metadata.tarpaulin]
+fail-under = 90.0
+out = ["Html", "Text"]
+all-features = true
+
