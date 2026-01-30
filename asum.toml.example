@@ -4,12 +4,14 @@ max_diff_length = 36000
 # Optional: List of file extensions to include in git diff
 # git_extensions = ["*.rs", "*.js", "*.ts", "*.py", "*.go"]
 
-[prompt]
-# Optional: Customize your commit message prompt. Use {{diff}} as placeholder for git changes.
-# custom_prompt = "Analyze the [INPUT DIFF] below and generate a concise bulleted list of changes: {{diff}}"
+[prompts]
+# Optional: Identity and rules for the AI
+# system_prompt = "You are an expert Git Commit Generator..."
+# Optional: Template for the user message. Use {{diff}} as placeholder.
+# user_prompt = "[INPUT DIFF]\n{{diff}}\n\n[OUTPUT]"
 
 [ai_params]
-num_predict = 250
+num_predict = 500
 temperature = 0.1
 top_p = 0.9
 
@@ -19,4 +21,4 @@ model = "gemini-2.0-flash"
 
 [ollama]
 model = "qwen2.5-coder:3b"
-url = "http://localhost:11434/api/generate"
+url = "http://localhost:11434/api/chat"

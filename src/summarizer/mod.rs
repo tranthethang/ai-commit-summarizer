@@ -13,7 +13,8 @@ pub struct AIConfig {
     pub num_predict: i32,
     pub api_url: Option<String>,
     pub api_key: Option<String>,
-    pub prompt: String,
+    pub system_prompt: String,
+    pub user_prompt: String,
 }
 
 #[async_trait]
@@ -37,7 +38,8 @@ pub async fn get_summarizer(config: AsumConfig) -> anyhow::Result<Box<dyn Summar
         num_predict: config.ai_num_predict,
         api_url: config.ollama_url.clone(),
         api_key: config.gemini_api_key.clone(),
-        prompt: config.prompt.clone(),
+        system_prompt: config.system_prompt.clone(),
+        user_prompt: config.user_prompt.clone(),
     };
 
     info!("Using provider: {}", provider);

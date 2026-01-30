@@ -20,20 +20,29 @@ impl OllamaProvider {
 #[async_trait]
 impl Summarizer for OllamaProvider {
     async fn summarize(&self, diff: &str) -> anyhow::Result<String> {
-        let prompt = generate_prompt(&self.config.prompt, diff);
+        let prompt = generate_prompt(&self.config.user_prompt, diff);
 
         let url = self
             .config
             .api_url
             .as_deref()
-            .unwrap_or("http://localhost:11434/api/generate");
+            .unwrap_or("http://localhost:11434/api/chat");
 
         let response = self
             .client
             .post(url)
             .json(&json!({
                 "model": self.config.model,
-                "prompt": prompt,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": &self.config.system_prompt
+                    },
+                    {
+                        "role": "user",
+                        "content": &prompt
+                    }
+                ],
                 "stream": false,
                 "options": {
                     "temperature": self.config.temperature,
@@ -49,7 +58,7 @@ impl Summarizer for OllamaProvider {
         }
 
         let res_json: serde_json::Value = response.json().await?;
-        let commit_msg = res_json["response"].as_str().unwrap_or("").trim();
+        let commit_msg = res_json["message"]["content"].as_str().unwrap_or("").trim();
 
         let final_msg = commit_msg
             .lines()
@@ -58,7 +67,6 @@ impl Summarizer for OllamaProvider {
                 !l.is_empty()
                     && !l.to_lowercase().contains("diff to analyze")
                     && !l.to_lowercase().contains("input diff")
-                    && l.starts_with("- ")
             })
             .collect::<Vec<_>>()
             .join("\n");

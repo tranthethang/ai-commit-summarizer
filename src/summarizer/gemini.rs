@@ -30,7 +30,7 @@ impl Summarizer for GeminiProvider {
             .as_deref()
             .context("Gemini API key is missing")?;
 
-        let prompt = generate_prompt(&self.config.prompt, diff);
+        let prompt = generate_prompt(&self.config.user_prompt, diff);
 
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
@@ -46,6 +46,11 @@ impl Summarizer for GeminiProvider {
                 .client
                 .post(&url)
                 .json(&json!({
+                    "system_instruction": {
+                        "parts": [{
+                            "text": &self.config.system_prompt
+                        }]
+                    },
                     "contents": [{
                         "parts": [{
                             "text": &prompt
@@ -98,7 +103,6 @@ impl Summarizer for GeminiProvider {
                 !l.is_empty()
                     && !l.to_lowercase().contains("diff to analyze")
                     && !l.to_lowercase().contains("input diff")
-                    && l.starts_with("- ")
             })
             .collect::<Vec<_>>()
             .join("\n");

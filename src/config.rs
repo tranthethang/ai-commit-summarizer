@@ -8,7 +8,8 @@ pub struct AsumConfig {
     pub active_provider: String,
     pub max_diff_length: usize,
     pub git_extensions: Vec<String>,
-    pub prompt: String,
+    pub system_prompt: String,
+    pub user_prompt: String,
     pub ai_temperature: f64,
     pub ai_top_p: f64,
     pub ai_num_predict: i32,
@@ -21,7 +22,7 @@ pub struct AsumConfig {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct TomlConfig {
     pub general: GeneralConfig,
-    pub prompt: Option<PromptConfig>,
+    pub prompts: Option<PromptsConfig>,
     pub ai_params: AIParamsConfig,
     pub gemini: Option<GeminiConfig>,
     pub ollama: Option<OllamaConfig>,
@@ -35,8 +36,9 @@ struct GeneralConfig {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
-struct PromptConfig {
-    pub custom_prompt: Option<String>,
+struct PromptsConfig {
+    pub system_prompt: Option<String>,
+    pub user_prompt: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -97,22 +99,37 @@ impl AsumConfig {
         .map(String::from)
         .collect();
 
-        let default_prompt = r#"You are a professional Git Commit Generator.
-Task: Analyze the [INPUT DIFF] below and generate a concise bulleted list of changes.
+        let default_system_prompt = r#"# SYSTEM IDENTITY
+You are an expert Git Commit Generator. Your goal is to produce high-quality, professional commit messages following Conventional Commits 1.0.0.
 
-Rules:
-1. Output ONLY a bulleted list of changes (starting with "- ").
-2. Maximum 10 items.
-3. Use Conventional Commits format (feat:, fix:, refactor:, chore:, docs:, etc.).
-4. NO preamble, NO explanations, NO code blocks, NO emojis.
-5. Focus ONLY on the changes provided in [INPUT DIFF].
+# STRICT RULES
+1. MANDATORY HEADER: Every response MUST start with `<type>(<scope>): <description>`.
+2. TYPES: Only use: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert.
+3. DESCRIPTION: Use imperative mood, lowercase, no period, max 50 chars.
+4. BODY (OPTIONAL): Use bullet points ("- ") to explain "what" and "why".
+5. OUTPUT: Return ONLY the raw commit message. No preamble, no backticks, no markdown blocks.
 
-Examples of valid format:
-- feat: add logging to authentication flow
-- fix: resolve memory leak in connection pool
-- refactor: simplify configuration loading logic
+# FEW-SHOT EXAMPLES
 
-[INPUT DIFF]
+Example 1 (Simple Fix):
+fix(ui): correct button alignment on mobile
+
+Example 2 (Feature with Body):
+feat(auth): implement oauth2 login flow
+
+- add google and github provider support
+- implement secure callback handling
+- encrypt user tokens before storage
+
+Example 3 (Breaking Change):
+refactor(api)!: migrate to async/await syntax
+
+- rewrite all controllers to be non-blocking
+- update database driver to support pooling
+
+BREAKING CHANGE: the synchronous API is no longer supported."#.to_string();
+
+        let default_user_prompt = r#"[INPUT DIFF]
 {{diff}}
 
 [OUTPUT]"#
@@ -125,10 +142,16 @@ Examples of valid format:
                 .general
                 .git_extensions
                 .unwrap_or(default_extensions),
-            prompt: toml_config
-                .prompt
-                .and_then(|p| p.custom_prompt)
-                .unwrap_or(default_prompt),
+            system_prompt: toml_config
+                .prompts
+                .as_ref()
+                .and_then(|p| p.system_prompt.clone())
+                .unwrap_or(default_system_prompt),
+            user_prompt: toml_config
+                .prompts
+                .as_ref()
+                .and_then(|p| p.user_prompt.clone())
+                .unwrap_or(default_user_prompt),
             ai_temperature: toml_config.ai_params.temperature,
             ai_top_p: toml_config.ai_params.top_p,
             ai_num_predict: toml_config.ai_params.num_predict,
