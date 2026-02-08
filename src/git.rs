@@ -22,6 +22,17 @@ pub fn get_git_diff_in_path(extensions: &[String], path: &str) -> anyhow::Result
     Ok(diff_text)
 }
 
+pub fn get_staged_files() -> anyhow::Result<String> {
+    get_staged_files_in_path(".")
+}
+
+pub fn get_staged_files_in_path(path: &str) -> anyhow::Result<String> {
+    let args = vec!["diff", "--cached", "--name-status"];
+    let output = Command::new("git").args(args).current_dir(path).output()?;
+    let files_text = String::from_utf8_lossy(&output.stdout).to_string();
+    Ok(files_text)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,5 +164,29 @@ mod tests {
         // Just a smoke test to ensure it doesn't crash in the current repo
         let result = get_git_diff(&["*.rs".to_string()]);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_get_staged_files() {
+        let dir = tempdir().unwrap();
+        let repo_path = dir.path();
+
+        Command::new("git")
+            .arg("init")
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        let file_path = repo_path.join("test.txt");
+        File::create(&file_path).unwrap();
+
+        Command::new("git")
+            .args(["add", "test.txt"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        let files = get_staged_files_in_path(repo_path.to_str().unwrap()).unwrap();
+        assert!(files.contains("A\ttest.txt"));
     }
 }
