@@ -1,3 +1,8 @@
+//! AI summarizer module for ASUM.
+//!
+//! This module defines the summarization interface and factory logic
+//! for various AI providers like Gemini and Ollama.
+
 pub mod gemini;
 pub mod ollama;
 
@@ -5,6 +10,8 @@ use crate::config::AsumConfig;
 use async_trait::async_trait;
 use tracing::info;
 
+/// Configuration specifically for the AI model execution.
+/// This is derived from the main `AsumConfig` but tailored for the providers.
 #[derive(Debug, Clone)]
 pub struct AIConfig {
     pub model: String,
@@ -17,12 +24,17 @@ pub struct AIConfig {
     pub user_prompt: String,
 }
 
+/// Trait defining the behavior of an AI commit summarizer.
+/// Any new AI provider must implement this trait.
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait Summarizer: Send + Sync {
+    /// Takes a git diff and returns a generated commit message.
     async fn summarize(&self, diff: &str) -> anyhow::Result<String>;
 }
 
+/// Factory function that returns a concrete implementation of a `Summarizer`
+/// based on the configuration's `active_provider`.
 pub async fn get_summarizer(config: AsumConfig) -> anyhow::Result<Box<dyn Summarizer>> {
     let provider = config.active_provider.clone();
 
@@ -55,12 +67,14 @@ pub async fn get_summarizer(config: AsumConfig) -> anyhow::Result<Box<dyn Summar
     }
 
     match provider.as_str() {
-        "ollama" => Ok(Box::new(ollama::OllamaProvider::new(ai_config))),
-        "gemini" => Ok(Box::new(gemini::GeminiProvider::new(ai_config))),
+        "ollama" => Ok(Box::new(ollama::OllamaProvider::new(ai_config)) as Box<dyn Summarizer>),
+        "gemini" => Ok(Box::new(gemini::GeminiProvider::new(ai_config)) as Box<dyn Summarizer>),
         _ => Err(anyhow::anyhow!("Unknown provider: {}", provider)),
     }
 }
 
+/// Injects the git diff into the provided prompt template.
+/// Replaces the `{{diff}}` placeholder with the actual diff content.
 pub fn generate_prompt(prompt_template: &str, diff: &str) -> String {
     prompt_template.replace("{{diff}}", diff)
 }
