@@ -27,7 +27,16 @@ pub fn get_staged_files() -> anyhow::Result<String> {
 }
 
 pub fn get_staged_files_in_path(path: &str) -> anyhow::Result<String> {
-    let args = vec!["diff", "--cached", "--name-status"];
+    let args = vec![
+        "diff",
+        "--cached",
+        "--name-status",
+        "--",
+        ":(exclude)*-lock.json",
+        ":(exclude)package-lock.json",
+        ":(exclude)pnpm-lock.yaml",
+        ":(exclude)*.min.js",
+    ];
     let output = Command::new("git").args(args).current_dir(path).output()?;
     let files_text = String::from_utf8_lossy(&output.stdout).to_string();
     Ok(files_text)

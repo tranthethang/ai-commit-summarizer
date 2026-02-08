@@ -3,7 +3,7 @@ mod git;
 mod summarizer;
 
 use crate::config::{AsumConfig, verify_toml};
-use crate::git::get_git_diff;
+use crate::git::{get_git_diff, get_staged_files};
 use crate::summarizer::get_summarizer;
 use anyhow::Context;
 use arboard::Clipboard;
@@ -78,8 +78,13 @@ pub async fn run_app(args: Vec<String>) -> anyhow::Result<()> {
     let mut diff_text = get_git_diff(&config.git_extensions).context("Failed to get git diff")?;
 
     if diff_text.is_empty() {
-        warn!("No staged changes found in supported code files.");
-        return Ok(());
+        warn!("No staged changes found in supported code files. Falling back to file list...");
+        diff_text = get_staged_files().context("Failed to get staged files")?;
+
+        if diff_text.is_empty() {
+            warn!("No staged changes found.");
+            return Ok(());
+        }
     }
 
     // 2. Optimize diff size
@@ -426,6 +431,79 @@ mod tests {
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("syntax error"));
+    }
+
+    #[tokio::test]
+    async fn test_run_app_full_flow_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_path = dir.path();
+
+        // Init git
+        std::process::Command::new("git")
+            .arg("init")
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        // Create a file with unsupported extension and stage it
+        let test_file = repo_path.join("test.unsupported");
+        std::fs::write(&test_file, "some content").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "test.unsupported"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        // Mock server
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let url = format!("http://{}", addr);
+
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0; 2048];
+            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf)
+                .await
+                .unwrap();
+
+            let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"message\": {\"content\": \"chore: fallback success\"}}";
+            tokio::io::AsyncWriteExt::write_all(&mut socket, response.as_bytes())
+                .await
+                .unwrap();
+        });
+
+        // Create config
+        let config_path = repo_path.join("asum.toml");
+        use std::io::Write;
+        let mut file = std::fs::File::create(config_path).unwrap();
+        writeln!(
+            file,
+            r#"
+            [general]
+            active_provider = "ollama"
+            max_diff_length = 1000
+            git_extensions = [".rs"]
+            [ai_params]
+            num_predict = 100
+            temperature = 0.7
+            top_p = 1.0
+            [ollama]
+            model = "llama3"
+            url = "{}"
+            "#,
+            url
+        )
+        .unwrap();
+
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(repo_path).unwrap();
+
+        let args = vec!["asum".to_string()];
+        let result = run_app(args).await;
+
+        std::env::set_current_dir(original_dir).unwrap();
+
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
