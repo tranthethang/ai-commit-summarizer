@@ -32,3 +32,5 @@ asum.toml
 tarpaulin-report.html
 build_rs_cov.profraw
 
+*.profraw
+coverage/

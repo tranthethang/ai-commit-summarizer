@@ -1,24 +1,44 @@
+//! Configuration management for ASUM.
+//!
+//! This module handles loading, parsing, and validating the application settings
+//! from local or global TOML configuration files.
+
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
+/// Main configuration structure for the application.
+/// It holds settings for AI providers, git filters, and prompt templates.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct AsumConfig {
+    /// The AI provider to use (e.g., "gemini" or "ollama").
     pub active_provider: String,
+    /// Maximum character length of the git diff to send to the AI.
     pub max_diff_length: usize,
+    /// List of file extensions to include in the git diff.
     pub git_extensions: Vec<String>,
+    /// System-level instruction for the AI model.
     pub system_prompt: String,
+    /// User-level prompt template containing the {{diff}} placeholder.
     pub user_prompt: String,
+    /// Controls randomness: lower is more deterministic.
     pub ai_temperature: f64,
+    /// Nucleus sampling: limits the model to the most likely tokens.
     pub ai_top_p: f64,
+    /// Maximum number of tokens to generate in the response.
     pub ai_num_predict: i32,
+    /// Base URL for the Ollama API.
     pub ollama_url: Option<String>,
+    /// Model name for Ollama (e.g., "llama3").
     pub ollama_model: Option<String>,
+    /// API key for Google Gemini.
     pub gemini_api_key: Option<String>,
+    /// Model name for Gemini (e.g., "gemini-1.5-flash").
     pub gemini_model: Option<String>,
 }
 
+/// Internal structure representing the raw TOML file layout.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct TomlConfig {
     pub general: GeneralConfig,
@@ -61,6 +81,8 @@ struct OllamaConfig {
 }
 
 impl AsumConfig {
+    /// Loads configuration by searching for 'asum.toml' in the current directory,
+    /// then falling back to '~/.asum/asum.toml'.
     pub fn load() -> Result<Self> {
         // 1. Check local config
         let local_path = Path::new("asum.toml");
@@ -85,6 +107,8 @@ impl AsumConfig {
         ))
     }
 
+    /// Reads and parses a TOML configuration file from the specified path.
+    /// Fills in default values for missing optional fields.
     fn load_from_toml<P: AsRef<Path>>(path: P) -> Result<Self> {
         let content = fs::read_to_string(path)?;
         let toml_config: TomlConfig = toml::from_str(&content)?;
@@ -163,6 +187,7 @@ BREAKING CHANGE: the synchronous API is no longer supported."#.to_string();
     }
 }
 
+/// Validates that a TOML file follows the expected schema.
 pub fn verify_toml<P: AsRef<Path>>(path: P) -> Result<()> {
     let content = fs::read_to_string(path)?;
     let _: TomlConfig = toml::from_str(&content)?;
@@ -366,6 +391,7 @@ mod tests {
         )
         .unwrap();
 
+        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
         let original_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(dir.path()).unwrap();
 
@@ -379,6 +405,7 @@ mod tests {
 
     #[test]
     fn test_asum_config_load_global() {
+        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
         let temp_home =
             std::env::temp_dir().join(format!("fake_home_global_{}", std::process::id()));
         fs::create_dir_all(temp_home.join(".asum")).unwrap();
@@ -425,6 +452,7 @@ mod tests {
 
     #[test]
     fn test_asum_config_load_no_config() {
+        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
         let temp_dir = std::env::temp_dir().join(format!("no_config_test_{}", std::process::id()));
         fs::create_dir_all(&temp_dir).unwrap();
 

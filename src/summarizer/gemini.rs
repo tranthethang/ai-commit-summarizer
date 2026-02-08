@@ -1,3 +1,8 @@
+//! Gemini AI provider for ASUM.
+//!
+//! This module implements the `Summarizer` trait using Google's Gemini API
+//! to generate commit messages.
+
 use crate::summarizer::{AIConfig, Summarizer, generate_prompt};
 use anyhow::Context;
 use async_trait::async_trait;
@@ -7,6 +12,7 @@ use std::time::Duration;
 use tokio::time::sleep;
 use tracing::warn;
 
+/// Implementation of the `Summarizer` trait using Google's Gemini API.
 pub struct GeminiProvider {
     config: AIConfig,
     client: Client,
@@ -14,6 +20,7 @@ pub struct GeminiProvider {
 }
 
 impl GeminiProvider {
+    /// Creates a new instance of `GeminiProvider` with the default base URL.
     pub fn new(config: AIConfig) -> Self {
         Self {
             config,
@@ -34,6 +41,8 @@ impl GeminiProvider {
 
 #[async_trait]
 impl Summarizer for GeminiProvider {
+    /// Generates a commit summary using the Gemini API.
+    /// Implements retry logic for rate limits and cleans the output message.
     async fn summarize(&self, diff: &str) -> anyhow::Result<String> {
         let api_key = self
             .config
@@ -48,6 +57,7 @@ impl Summarizer for GeminiProvider {
             self.base_url, self.config.model, api_key
         );
 
+        // Implementation of exponential backoff for rate limiting (HTTP 429)
         let mut retries = 0;
         let max_retries = 3;
         let mut backoff = 2;
@@ -99,6 +109,7 @@ impl Summarizer for GeminiProvider {
             break res;
         };
 
+        // Parse the JSON response from Gemini
         let res_json: serde_json::Value = response.json().await?;
 
         // Gemini response structure: candidates[0].content.parts[0].text
@@ -107,6 +118,8 @@ impl Summarizer for GeminiProvider {
             .unwrap_or("")
             .trim();
 
+        // Post-process the generated message to remove boilerplate text
+        // that AI models sometimes include in their responses.
         let final_msg = commit_msg
             .lines()
             .map(|l| l.trim())

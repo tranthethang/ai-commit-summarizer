@@ -1,14 +1,21 @@
+//! Ollama AI provider for ASUM.
+//!
+//! This module implements the `Summarizer` trait using the Ollama API
+//! (local or remote) to generate commit messages.
+
 use crate::summarizer::{AIConfig, Summarizer, generate_prompt};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
 
+/// Implementation of the `Summarizer` trait using a local or remote Ollama API.
 pub struct OllamaProvider {
     config: AIConfig,
     client: Client,
 }
 
 impl OllamaProvider {
+    /// Creates a new instance of `OllamaProvider`.
     pub fn new(config: AIConfig) -> Self {
         Self {
             config,
@@ -19,15 +26,19 @@ impl OllamaProvider {
 
 #[async_trait]
 impl Summarizer for OllamaProvider {
+    /// Generates a commit summary using the Ollama API.
+    /// Sends the system prompt and the diff to the configured model.
     async fn summarize(&self, diff: &str) -> anyhow::Result<String> {
         let prompt = generate_prompt(&self.config.user_prompt, diff);
 
+        // Determine the Ollama API endpoint, defaulting to localhost
         let url = self
             .config
             .api_url
             .as_deref()
             .unwrap_or("http://localhost:11434/api/chat");
 
+        // Prepare and send the request to the Ollama model
         let response = self
             .client
             .post(url)
@@ -57,13 +68,17 @@ impl Summarizer for OllamaProvider {
             anyhow::bail!("Ollama API returned error: {}", response.status());
         }
 
+        // Parse the JSON response from Ollama
         let res_json: serde_json::Value = response.json().await?;
         let commit_msg = res_json["message"]["content"].as_str().unwrap_or("").trim();
 
+        // Post-process the generated message to remove boilerplate text
+        // that AI models sometimes include in their responses.
         let final_msg = commit_msg
             .lines()
             .map(|l| l.trim())
             .filter(|l| {
+                // Remove empty lines and lines that echo the input diff instructions
                 !l.is_empty()
                     && !l.to_lowercase().contains("diff to analyze")
                     && !l.to_lowercase().contains("input diff")

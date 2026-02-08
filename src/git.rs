@@ -1,14 +1,24 @@
+//! Git utility module for ASUM.
+//!
+//! This module interacts with the Git CLI to retrieve staged changes
+//! and file lists for AI analysis.
+
 use std::process::Command;
 
+/// Retrieves the git diff of staged changes for the specified file extensions in the current directory.
 pub fn get_git_diff(extensions: &[String]) -> anyhow::Result<String> {
     get_git_diff_in_path(extensions, ".")
 }
 
+/// Retrieves the git diff of staged changes for the specified file extensions in a specific directory.
+/// It excludes common lock files and minified scripts to keep the diff clean.
 pub fn get_git_diff_in_path(extensions: &[String], path: &str) -> anyhow::Result<String> {
     let mut args = vec!["diff", "--cached", "--"];
+    // Add file patterns to include based on configuration
     for ext in extensions {
         args.push(ext);
     }
+    // Explicitly exclude generated or binary-like files that aren't useful for summaries
     args.extend([
         ":(exclude)*-lock.json",
         ":(exclude)package-lock.json",
@@ -22,10 +32,13 @@ pub fn get_git_diff_in_path(extensions: &[String], path: &str) -> anyhow::Result
     Ok(diff_text)
 }
 
+/// Retrieves a list of staged files and their status in the current directory.
 pub fn get_staged_files() -> anyhow::Result<String> {
     get_staged_files_in_path(".")
 }
 
+/// Retrieves a list of staged files and their status in a specific directory.
+/// This is used as a fallback when no code diff is available.
 pub fn get_staged_files_in_path(path: &str) -> anyhow::Result<String> {
     let args = vec![
         "diff",

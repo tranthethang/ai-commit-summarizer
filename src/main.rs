@@ -1,6 +1,17 @@
+//! ASUM - AI Commit Summarizer
+//!
+//! This tool automatically generates professional commit messages based on staged changes
+//! using AI providers like Google Gemini or local Ollama instances.
+
 mod config;
 mod git;
 mod summarizer;
+
+#[cfg(test)]
+pub mod test_utils {
+    use std::sync::Mutex;
+    pub static TEST_MUTEX: Mutex<()> = Mutex::new(());
+}
 
 use crate::config::{AsumConfig, verify_toml};
 use crate::git::{get_git_diff, get_staged_files};
@@ -11,9 +22,11 @@ use std::env;
 use tracing::{error, info, warn};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
+/// Entry point of the application.
+/// Sets up logging and parses command line arguments to run the app.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize logging
+    // Initialize logging directory at ~/.asum/logs
     let mut log_dir = home::home_dir().context("Could not find home directory")?;
     log_dir.push(".asum");
     log_dir.push("logs");
@@ -32,9 +45,15 @@ async fn main() -> anyhow::Result<()> {
     run_app(args).await
 }
 
+/// Core logic for processing command line arguments and executing commands.
+///
+/// # Arguments
+/// * `args` - A vector of string arguments from the command line.
 pub async fn run_app(args: Vec<String>) -> anyhow::Result<()> {
+    // Handle subcommands if provided
     if args.len() > 1 {
         match args[1].as_str() {
+            // Validates the syntax of the local 'asum.toml' file
             "verify" => {
                 if std::path::Path::new("asum.toml").exists() {
                     match verify_toml("asum.toml") {
@@ -52,6 +71,7 @@ pub async fn run_app(args: Vec<String>) -> anyhow::Result<()> {
                     return Err(anyhow::anyhow!("asum.toml not found"));
                 }
             }
+            // Displays usage instructions
             "help" | "--help" | "-h" => {
                 println!("ASUM - AI Commit Summarizer");
                 println!("\nUsage:");
@@ -60,6 +80,7 @@ pub async fn run_app(args: Vec<String>) -> anyhow::Result<()> {
                 println!("  asum help    Show this help message");
                 return Ok(());
             }
+            // Handle invalid subcommands
             _ => {
                 error!("Unknown command: {}", args[1]);
                 println!("\nUsage:");
@@ -74,9 +95,11 @@ pub async fn run_app(args: Vec<String>) -> anyhow::Result<()> {
     // Load Configuration (prioritize local asum.toml, then ~/.asum/asum.toml)
     let config = AsumConfig::load().context("Failed to load configuration")?;
 
-    // 1. Get git diff
+    // 1. Extract the git diff of staged changes
+    // Filters changes based on supported file extensions defined in config
     let mut diff_text = get_git_diff(&config.git_extensions).context("Failed to get git diff")?;
 
+    // If no code changes are found, try to get a list of staged file names as a fallback
     if diff_text.is_empty() {
         warn!("No staged changes found in supported code files. Falling back to file list...");
         diff_text = get_staged_files().context("Failed to get staged files")?;
@@ -87,7 +110,8 @@ pub async fn run_app(args: Vec<String>) -> anyhow::Result<()> {
         }
     }
 
-    // 2. Optimize diff size
+    // 2. Truncate the diff if it exceeds the configured maximum length
+    // This prevents sending excessively large payloads to the AI model
     let max_diff_length = config.max_diff_length;
 
     if diff_text.len() > max_diff_length {
@@ -102,17 +126,17 @@ pub async fn run_app(args: Vec<String>) -> anyhow::Result<()> {
 
     info!("AI is analyzing your changes...");
 
-    // 3. Get Summarizer (Strategy Pattern)
+    // 3. Initialize the AI summarizer based on the active provider (e.g., Gemini, Ollama)
     let summarizer = get_summarizer(config)
         .await
         .context("Failed to get summarizer")?;
 
-    // 4. Generate Summary
+    // 4. Request the AI to generate a commit message based on the diff
     match summarizer.summarize(&diff_text).await {
         Ok(final_msg) => {
             println!("{}", final_msg);
 
-            // 5. Copy to Clipboard
+            // 5. Automatically copy the generated message to the system clipboard
             if let Ok(mut clipboard) = Clipboard::new() {
                 if let Err(e) = clipboard.set_text(final_msg) {
                     error!("Could not copy to clipboard: {}", e);
@@ -178,6 +202,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_app_verify_not_found() {
+        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
         // Run in a temp dir where asum.toml doesn't exist
         let dir = tempfile::tempdir().unwrap();
         let args = vec!["asum".to_string(), "verify".to_string()];
@@ -197,6 +222,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_app_verify_valid() {
+        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let config_path = dir.path().join("asum.toml");
         let mut file = std::fs::File::create(config_path).unwrap();
@@ -229,6 +255,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_app_full_flow_no_staged() {
+        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let repo_path = dir.path();
 
@@ -270,6 +297,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_app_full_flow_with_staged() {
+        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let repo_path = dir.path();
 
@@ -342,6 +370,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_app_full_flow_with_truncation() {
+        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let repo_path = dir.path();
 
@@ -415,6 +444,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_app_verify_invalid_toml() {
+        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let config_path = dir.path().join("asum.toml");
         let mut file = std::fs::File::create(&config_path).unwrap();
@@ -435,6 +465,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_app_full_flow_fallback() {
+        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
         let repo_path = dir.path();
 
@@ -508,6 +539,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_run_app_summarize_fail() {
+        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let url = format!("http://{}", addr);
