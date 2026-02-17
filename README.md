@@ -61,6 +61,7 @@ The tool will analyze your staged changes, display a suggested commit message, a
 
 ## Configuration
 
+
 **asum** loads configuration from a file named `asum.toml`. It searches for this file in the following order:
 
 1.  **Local**: The current directory where you run the `asum` command.

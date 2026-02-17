@@ -38,11 +38,22 @@ impl Summarizer for OllamaProvider {
             .as_deref()
             .unwrap_or("http://localhost:11434/api/chat");
 
-        // Prepare and send the request to the Ollama model
-        let response = self
-            .client
-            .post(url)
-            .json(&json!({
+        let is_generate_api = url.ends_with("/api/generate");
+
+        // Prepare the request payload based on the API endpoint
+        let payload = if is_generate_api {
+            json!({
+                "model": self.config.model,
+                "prompt": format!("{}\n\n{}", self.config.system_prompt, prompt),
+                "stream": false,
+                "options": {
+                    "temperature": self.config.temperature,
+                    "num_predict": self.config.num_predict,
+                    "top_p": self.config.top_p
+                }
+            })
+        } else {
+            json!({
                 "model": self.config.model,
                 "messages": [
                     {
@@ -60,9 +71,11 @@ impl Summarizer for OllamaProvider {
                     "num_predict": self.config.num_predict,
                     "top_p": self.config.top_p
                 }
-            }))
-            .send()
-            .await?;
+            })
+        };
+
+        // Send the request to the Ollama model
+        let response = self.client.post(url).json(&payload).send().await?;
 
         if !response.status().is_success() {
             anyhow::bail!("Ollama API returned error: {}", response.status());
@@ -70,7 +83,13 @@ impl Summarizer for OllamaProvider {
 
         // Parse the JSON response from Ollama
         let res_json: serde_json::Value = response.json().await?;
-        let commit_msg = res_json["message"]["content"].as_str().unwrap_or("").trim();
+
+        // Try to get content from "message.content" (chat API) or "response" (generate API)
+        let commit_msg = res_json["message"]["content"]
+            .as_str()
+            .or_else(|| res_json["response"].as_str())
+            .unwrap_or("")
+            .trim();
 
         // Post-process the generated message to remove boilerplate text
         // that AI models sometimes include in their responses.
@@ -183,5 +202,40 @@ mod tests {
         let provider = OllamaProvider::new(ai_config);
         let result = provider.summarize("diff").await.unwrap();
         assert_eq!(result, "feat: success");
+    }
+
+    #[tokio::test]
+    async fn test_ollama_summarize_generate_endpoint_success() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let url = format!("http://{}/api/generate", addr);
+
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0; 1024];
+            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf)
+                .await
+                .unwrap();
+
+            // Ollama /api/generate returns "response" field
+            let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"response\": \"feat: success from generate\"}";
+            tokio::io::AsyncWriteExt::write_all(&mut socket, response.as_bytes())
+                .await
+                .unwrap();
+        });
+
+        let ai_config = AIConfig {
+            model: "llama3".to_string(),
+            temperature: 0.7,
+            top_p: 1.0,
+            num_predict: 100,
+            api_url: Some(url),
+            api_key: None,
+            system_prompt: "sys".to_string(),
+            user_prompt: "user".to_string(),
+        };
+        let provider = OllamaProvider::new(ai_config);
+        let result = provider.summarize("diff").await.unwrap();
+        assert_eq!(result, "feat: success from generate");
     }
 }
