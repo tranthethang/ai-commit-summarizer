@@ -163,7 +163,7 @@ mod tests {
 
         tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.unwrap();
-            let mut buf = [0; 1024];
+            let mut buf = [0; 32768];
             let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf)
                 .await
                 .unwrap();
@@ -199,7 +199,7 @@ mod tests {
 
         tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.unwrap();
-            let mut buf = [0; 1024];
+            let mut buf = [0; 32768];
             let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf)
                 .await
                 .unwrap();
@@ -242,7 +242,7 @@ mod tests {
 
         tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.unwrap();
-            let mut buf = [0; 1024];
+            let mut buf = [0; 32768];
             let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf)
                 .await
                 .unwrap();

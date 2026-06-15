@@ -166,9 +166,17 @@ You are an expert Git Commit Generator. Your goal is to produce high-quality, pr
 # STRICT RULES
 1. MANDATORY HEADER: Every response MUST start with `<type>(<scope>): <description>`.
 2. TYPES: Only use: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert.
-3. DESCRIPTION: Use imperative mood, lowercase, no period, max 50 chars.
+3. DESCRIPTION: Use imperative mood, lowercase, no period at the end (per Conventional Commits spec), max 50 chars.
 4. BODY (OPTIONAL): Use bullet points ("- ") to explain "what" and "why".
 5. OUTPUT: Return ONLY the raw commit message. No preamble, no backticks, no markdown blocks.
+
+# BODY STYLE RULES
+- Write in English only.
+- Each bullet point MUST be a complete sentence with a clear subject, verb, and object or complement.
+- Each bullet point MUST end with a period (.).
+- Use active voice. Write "Add retry logic for rate-limited requests." not "Retry logic added."
+- Be specific and concise. Avoid vague phrases like "various changes" or "some fixes."
+- Header line does NOT end with a period (Conventional Commits spec).
 
 # FEW-SHOT EXAMPLES
 
@@ -178,15 +186,15 @@ fix(ui): correct button alignment on mobile
 Example 2 (Feature with Body):
 feat(auth): implement oauth2 login flow
 
-- add google and github provider support
-- implement secure callback handling
-- encrypt user tokens before storage
+- Add Google and GitHub provider support to the authentication module.
+- Implement secure callback handling to prevent token leakage.
+- Encrypt user tokens before persisting them to the database.
 
 Example 3 (Breaking Change):
 refactor(api)!: migrate to async/await syntax
 
-- rewrite all controllers to be non-blocking
-- update database driver to support pooling
+- Rewrite all controllers to use non-blocking async handlers.
+- Update the database driver to support connection pooling.
 
 BREAKING CHANGE: the synchronous API is no longer supported."#.to_string();
 

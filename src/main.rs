@@ -14,7 +14,7 @@ pub mod test_utils {
 }
 
 use crate::config::{AsumConfig, verify_toml};
-use crate::git::{get_git_diff, get_staged_files};
+use crate::git::{get_git_diff, get_staged_files, smart_truncate_diff};
 use crate::summarizer::get_summarizer;
 use anyhow::Context;
 use arboard::Clipboard;
@@ -116,12 +116,12 @@ pub async fn run_app(args: Vec<String>) -> anyhow::Result<()> {
 
     if diff_text.len() > max_diff_length {
         info!(
-            "Diff is too large ({} bytes), truncating to {} bytes for AI...",
+            "Diff is too large ({} bytes), applying smart truncation to {} bytes...",
             diff_text.len(),
             max_diff_length
         );
         info!("You can increase this limit by updating 'max_diff_length' in your config.");
-        diff_text = diff_text.chars().take(max_diff_length).collect();
+        diff_text = smart_truncate_diff(&diff_text, max_diff_length);
     }
 
     info!("AI is analyzing your changes...");
@@ -325,7 +325,7 @@ mod tests {
 
         tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.unwrap();
-            let mut buf = [0; 2048];
+            let mut buf = [0; 32768];
             let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf)
                 .await
                 .unwrap();
@@ -493,7 +493,7 @@ mod tests {
 
         tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.unwrap();
-            let mut buf = [0; 2048];
+            let mut buf = [0; 32768];
             let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf)
                 .await
                 .unwrap();
