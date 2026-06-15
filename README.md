@@ -16,6 +16,17 @@
 
 ---
 
+## Providers
+
+**asum** supports multiple AI providers. Click the links below for detailed configuration guides:
+
+- [Ollama](./docs/providers/ollama.md)
+- [Google Gemini](./docs/providers/gemini.md)
+- [OpenAI](./docs/providers/openai.md)
+- [Google Vertex AI](./docs/providers/vertexai.md)
+
+---
+
 ## Requirements
 
 Before installing, ensure you have the following tools set up:
@@ -29,18 +40,19 @@ Before installing, ensure you have the following tools set up:
 
 ## Installation
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/tranthethang/ai-commit-summarizer.git
-   cd ai-commit-summarizer
-   ```
+You can install `asum` directly using our automated installation script, which detects your OS/Architecture and downloads the latest pre-compiled binary:
 
-2. **Run the installer**:
-   ```bash
-   chmod +x install.sh
-   ./install.sh
-   ```
-   *Note: The installer will compile the project in release mode and move the binary to `/usr/local/bin`.*
+```bash
+curl -fsSL https://raw.githubusercontent.com/tranthethang/ai-commit-summarizer/main/install.sh | bash
+```
+
+Alternatively, you can build from source using Rust:
+```bash
+git clone https://github.com/tranthethang/ai-commit-summarizer.git
+cd ai-commit-summarizer
+cargo build --release
+sudo cp target/release/asum /usr/local/bin/
+```
 
 ---
 
@@ -138,9 +150,14 @@ After running the script, you can find the HTML report at `./coverage/index.html
 
 ## Uninstallation
 
-To remove the tool from your system:
+To remove the tool from your system, you can run the uninstallation script:
 
 ```bash
-chmod +x uninstall.sh
-./uninstall.sh
+curl -fsSL https://raw.githubusercontent.com/tranthethang/ai-commit-summarizer/main/uninstall.sh | bash
 ```
+
+---
+
+## CI/CD and Automation
+
+For details on how the pre-compiled binaries are built and released via GitHub Actions, see the [Automation and Releases Documentation](./docs/automation-and-releases.md).

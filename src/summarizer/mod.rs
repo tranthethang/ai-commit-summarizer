@@ -5,6 +5,8 @@
 
 pub mod gemini;
 pub mod ollama;
+pub mod openai;
+pub mod vertexai;
 
 use crate::config::AsumConfig;
 use async_trait::async_trait;
@@ -22,6 +24,8 @@ pub struct AIConfig {
     pub api_key: Option<String>,
     pub system_prompt: String,
     pub user_prompt: String,
+    pub project_id: Option<String>,
+    pub location: Option<String>,
 }
 
 /// Trait defining the behavior of an AI commit summarizer.
@@ -41,7 +45,24 @@ pub async fn get_summarizer(config: AsumConfig) -> anyhow::Result<Box<dyn Summar
     let model = match provider.as_str() {
         "gemini" => config.gemini_model.clone().unwrap_or_default(),
         "ollama" => config.ollama_model.clone().unwrap_or_default(),
+        "openai" => config.openai_model.clone().unwrap_or_default(),
+        "vertexai" => config.vertex_model.clone().unwrap_or_default(),
         _ => "".to_string(),
+    };
+
+    let api_url = match provider.as_str() {
+        "gemini" => config.gemini_url.clone(),
+        "ollama" => config.ollama_url.clone(),
+        "openai" => config.openai_url.clone(),
+        "vertexai" => config.vertex_url.clone(),
+        _ => None,
+    };
+
+    let api_key = match provider.as_str() {
+        "gemini" => config.gemini_api_key.clone(),
+        "openai" => config.openai_api_key.clone(),
+        "vertexai" => config.vertex_access_token.clone(),
+        _ => None,
     };
 
     let ai_config = AIConfig {
@@ -49,10 +70,12 @@ pub async fn get_summarizer(config: AsumConfig) -> anyhow::Result<Box<dyn Summar
         temperature: config.ai_temperature,
         top_p: config.ai_top_p,
         num_predict: config.ai_num_predict,
-        api_url: config.ollama_url.clone(),
-        api_key: config.gemini_api_key.clone(),
+        api_url,
+        api_key,
         system_prompt: config.system_prompt.clone(),
         user_prompt: config.user_prompt.clone(),
+        project_id: config.vertex_project_id.clone(),
+        location: config.vertex_location.clone(),
     };
 
     info!("Using provider: {}", provider);
@@ -63,12 +86,16 @@ pub async fn get_summarizer(config: AsumConfig) -> anyhow::Result<Box<dyn Summar
         } else {
             "****".to_string()
         };
-        info!("Using API key: {}", masked_key);
+        info!("Using API key / Access Token: {}", masked_key);
     }
 
     match provider.as_str() {
         "ollama" => Ok(Box::new(ollama::OllamaProvider::new(ai_config)) as Box<dyn Summarizer>),
         "gemini" => Ok(Box::new(gemini::GeminiProvider::new(ai_config)) as Box<dyn Summarizer>),
+        "openai" => Ok(Box::new(openai::OpenAIProvider::new(ai_config)) as Box<dyn Summarizer>),
+        "vertexai" => {
+            Ok(Box::new(vertexai::VertexAIProvider::new(ai_config)) as Box<dyn Summarizer>)
+        }
         _ => Err(anyhow::anyhow!("Unknown provider: {}", provider)),
     }
 }
@@ -169,6 +196,15 @@ mod tests {
             ollama_model: Some("llama3".to_string()),
             gemini_api_key: None,
             gemini_model: None,
+            gemini_url: None,
+            openai_api_key: None,
+            openai_model: None,
+            openai_url: None,
+            vertex_project_id: None,
+            vertex_location: None,
+            vertex_model: None,
+            vertex_access_token: None,
+            vertex_url: None,
         };
 
         let result = get_summarizer(config).await;
@@ -194,6 +230,15 @@ mod tests {
             ollama_model: None,
             gemini_api_key: Some("test_key".to_string()),
             gemini_model: Some("gemini-pro".to_string()),
+            gemini_url: None,
+            openai_api_key: None,
+            openai_model: None,
+            openai_url: None,
+            vertex_project_id: None,
+            vertex_location: None,
+            vertex_model: None,
+            vertex_access_token: None,
+            vertex_url: None,
         };
 
         let result = get_summarizer(config).await;
@@ -217,6 +262,15 @@ mod tests {
             ollama_model: None,
             gemini_api_key: Some("very_long_api_key_for_testing".to_string()),
             gemini_model: Some("gemini-pro".to_string()),
+            gemini_url: None,
+            openai_api_key: None,
+            openai_model: None,
+            openai_url: None,
+            vertex_project_id: None,
+            vertex_location: None,
+            vertex_model: None,
+            vertex_access_token: None,
+            vertex_url: None,
         };
 
         let result = get_summarizer(config).await;
@@ -238,6 +292,15 @@ mod tests {
             ollama_model: None,
             gemini_api_key: None,
             gemini_model: None,
+            gemini_url: None,
+            openai_api_key: None,
+            openai_model: None,
+            openai_url: None,
+            vertex_project_id: None,
+            vertex_location: None,
+            vertex_model: None,
+            vertex_access_token: None,
+            vertex_url: None,
         };
 
         let result = get_summarizer(config).await;

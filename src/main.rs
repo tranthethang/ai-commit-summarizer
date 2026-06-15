@@ -156,6 +156,7 @@ pub async fn run_app(args: Vec<String>) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::await_holding_lock)]
     use super::*;
     use crate::summarizer::{MockSummarizer, Summarizer};
 

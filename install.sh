@@ -1,47 +1,78 @@
 #!/bin/bash
 
-# Load environment variables from .env if it exists
-if [ -f .env ]; then
-    export $(grep -v '^#' .env | xargs)
-fi
+# assum installation script
+# This script downloads and installs the pre-compiled binary for asum.
+# It supports Linux (x86_64) and macOS (x86_64, aarch64/arm64).
 
-# --- CONFIGURATION ---
-APP_NAME=${APP_NAME:-"asum"}
-INSTALL_DIR=${INSTALL_DIR:-"/usr/local/bin"}
-BINARY_PATH="target/release/$APP_NAME"
+set -e
+
+REPO="tranthethang/ai-commit-summarizer"
+APP_NAME="asum"
+INSTALL_DIR="/usr/local/bin"
 
 echo "--------------------------------------------------"
-echo "🚀 Starting Release Build for $APP_NAME"
+echo "🚀 Installing $APP_NAME..."
 echo "--------------------------------------------------"
 
-# 1. Check if Rust is installed
-if ! command -v cargo &> /dev/null; then
-    echo "❌ Error: Rust/Cargo is not installed."
+# Detect OS and architecture
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+
+# Map architecture to Rust target names
+if [ "$ARCH" = "x86_64" ] || [ "$ARCH" = "amd64" ]; then
+    ARCH="x86_64"
+elif [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then
+    ARCH="aarch64"
+else
+    echo "❌ Error: Unsupported architecture ($ARCH)."
     exit 1
 fi
 
-# 2. Compile Release version with high optimization
-echo "[1/3] Compiling optimized binary..."
-cargo build --release
-
-# Check if build failed
-if [ $? -ne 0 ]; then
-    echo "❌ Build failed. Please check your Rust code."
+if [ "$OS" = "linux" ]; then
+    if [ "$ARCH" = "x86_64" ]; then
+        TARGET="x86_64-unknown-linux-gnu"
+    else
+        echo "❌ Error: Pre-compiled binaries for Linux $ARCH are not available yet."
+        exit 1
+    fi
+elif [ "$OS" = "darwin" ]; then
+    if [ "$ARCH" = "x86_64" ]; then
+        TARGET="x86_64-apple-darwin"
+    elif [ "$ARCH" = "aarch64" ]; then
+        TARGET="aarch64-apple-darwin"
+    fi
+else
+    echo "❌ Error: Unsupported operating system ($OS)."
     exit 1
 fi
 
-# 3. Compress binary file (Optional - makes file lighter)
-# On Mac you can use 'strip' to remove extra symbols
-echo "[2/3] Stripping debug symbols to reduce size..."
-strip "$BINARY_PATH"
+TAR_NAME="${APP_NAME}-${TARGET}.tar.gz"
+DOWNLOAD_URL="https://github.com/${REPO}/releases/download/latest/${TAR_NAME}"
+TEMP_DIR=$(mktemp -d)
 
-# 4. Install to system
-echo "[3/3] Installing to $INSTALL_DIR..."
-sudo cp "$BINARY_PATH" "$INSTALL_DIR/$APP_NAME"
+# Download the archive
+echo "Downloading $APP_NAME for $OS ($ARCH)..."
+echo "URL: $DOWNLOAD_URL"
+if ! curl -fsSL -o "$TEMP_DIR/$TAR_NAME" "$DOWNLOAD_URL"; then
+    echo "❌ Error: Failed to download $APP_NAME. Please check your internet connection or try again later."
+    rm -rf "$TEMP_DIR"
+    exit 1
+fi
+
+# Extract the archive
+echo "Extracting..."
+tar -xzf "$TEMP_DIR/$TAR_NAME" -C "$TEMP_DIR"
+
+# Install the binary
+echo "Installing to $INSTALL_DIR (requires sudo access)..."
+sudo cp "$TEMP_DIR/$APP_NAME" "$INSTALL_DIR/$APP_NAME"
 sudo chmod +x "$INSTALL_DIR/$APP_NAME"
 
+# Clean up
+rm -rf "$TEMP_DIR"
+
 echo "--------------------------------------------------"
-echo "✅ SUCCESS: $APP_NAME is now updated and ready!"
+echo "✅ SUCCESS: $APP_NAME has been installed successfully!"
 echo "Location: $(which $APP_NAME)"
-echo "Version:  $($APP_NAME --version 2>/dev/null || echo '0.1.0')"
+echo "Version:  $($APP_NAME --version 2>/dev/null || echo 'Unknown')"
 echo "--------------------------------------------------"
