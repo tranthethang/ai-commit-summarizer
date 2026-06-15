@@ -77,6 +77,7 @@ impl Summarizer for GeminiProvider {
                         }]
                     },
                     "contents": [{
+                        "role": "user",
                         "parts": [{
                             "text": &prompt
                         }]

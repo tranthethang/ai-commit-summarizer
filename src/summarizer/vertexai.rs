@@ -85,6 +85,7 @@ impl Summarizer for VertexAIProvider {
                 }]
             },
             "contents": [{
+                "role": "user",
                 "parts": [{
                     "text": &prompt
                 }]
