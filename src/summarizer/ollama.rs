@@ -129,6 +129,8 @@ mod tests {
             api_key: None,
             system_prompt: "sys".to_string(),
             user_prompt: "user".to_string(),
+            project_id: None,
+            location: None,
         };
         let provider = OllamaProvider::new(ai_config);
         assert_eq!(provider.config.model, "llama3");
@@ -164,6 +166,8 @@ mod tests {
             api_key: None,
             system_prompt: "sys".to_string(),
             user_prompt: "user".to_string(),
+            project_id: None,
+            location: None,
         };
         let provider = OllamaProvider::new(ai_config);
         let result = provider.summarize("diff").await;
@@ -198,6 +202,8 @@ mod tests {
             api_key: None,
             system_prompt: "sys".to_string(),
             user_prompt: "user".to_string(),
+            project_id: None,
+            location: None,
         };
         let provider = OllamaProvider::new(ai_config);
         let result = provider.summarize("diff").await.unwrap();
@@ -233,6 +239,8 @@ mod tests {
             api_key: None,
             system_prompt: "sys".to_string(),
             user_prompt: "user".to_string(),
+            project_id: None,
+            location: None,
         };
         let provider = OllamaProvider::new(ai_config);
         let result = provider.summarize("diff").await.unwrap();

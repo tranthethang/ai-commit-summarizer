@@ -16,6 +16,17 @@
 
 ---
 
+## Providers
+
+**asum** supports multiple AI providers. Click the links below for detailed configuration guides:
+
+- [Ollama](./docs/providers/ollama.md)
+- [Google Gemini](./docs/providers/gemini.md)
+- [OpenAI](./docs/providers/openai.md)
+- [Google Vertex AI](./docs/providers/vertexai.md)
+
+---
+
 ## Requirements
 
 Before installing, ensure you have the following tools set up:

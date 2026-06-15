@@ -22,10 +22,14 @@ pub struct GeminiProvider {
 impl GeminiProvider {
     /// Creates a new instance of `GeminiProvider` with the default base URL.
     pub fn new(config: AIConfig) -> Self {
+        let base_url = config
+            .api_url
+            .clone()
+            .unwrap_or_else(|| "https://generativelanguage.googleapis.com".to_string());
         Self {
             config,
             client: Client::new(),
-            base_url: "https://generativelanguage.googleapis.com".to_string(),
+            base_url,
         }
     }
 
@@ -155,6 +159,8 @@ mod tests {
             api_key: Some("key".to_string()),
             system_prompt: "sys".to_string(),
             user_prompt: "user".to_string(),
+            project_id: None,
+            location: None,
         };
         let provider = GeminiProvider::new(ai_config);
         assert_eq!(provider.config.model, "gemini-pro");
@@ -190,6 +196,8 @@ mod tests {
             api_key: None,
             system_prompt: "sys".to_string(),
             user_prompt: "user".to_string(),
+            project_id: None,
+            location: None,
         };
         let provider = GeminiProvider::new(ai_config);
         let result = provider.summarize("diff").await;
@@ -230,6 +238,8 @@ mod tests {
             api_key: Some("test_key".to_string()),
             system_prompt: "sys".to_string(),
             user_prompt: "user".to_string(),
+            project_id: None,
+            location: None,
         };
         let provider = GeminiProvider::new_with_url(ai_config, url);
         let result = provider.summarize("diff").await.unwrap();

@@ -36,6 +36,24 @@ pub struct AsumConfig {
     pub gemini_api_key: Option<String>,
     /// Model name for Gemini (e.g., "gemini-1.5-flash").
     pub gemini_model: Option<String>,
+    /// Custom URL for Gemini.
+    pub gemini_url: Option<String>,
+    /// API key for OpenAI.
+    pub openai_api_key: Option<String>,
+    /// Model name for OpenAI.
+    pub openai_model: Option<String>,
+    /// Custom URL for OpenAI.
+    pub openai_url: Option<String>,
+    /// GCP Project ID for Vertex AI.
+    pub vertex_project_id: Option<String>,
+    /// GCP Location for Vertex AI.
+    pub vertex_location: Option<String>,
+    /// Model name for Vertex AI.
+    pub vertex_model: Option<String>,
+    /// Optional explicit access token for Vertex AI.
+    pub vertex_access_token: Option<String>,
+    /// Custom URL for Vertex AI.
+    pub vertex_url: Option<String>,
 }
 
 /// Internal structure representing the raw TOML file layout.
@@ -46,6 +64,8 @@ struct TomlConfig {
     pub ai_params: AIParamsConfig,
     pub gemini: Option<GeminiConfig>,
     pub ollama: Option<OllamaConfig>,
+    pub openai: Option<OpenAIConfig>,
+    pub vertexai: Option<VertexAIConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -72,12 +92,29 @@ struct AIParamsConfig {
 struct GeminiConfig {
     pub api_key: String,
     pub model: String,
+    pub url: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct OllamaConfig {
     pub model: String,
     pub url: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct OpenAIConfig {
+    pub api_key: String,
+    pub model: String,
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct VertexAIConfig {
+    pub project_id: String,
+    pub location: String,
+    pub model: String,
+    pub access_token: Option<String>,
+    pub url: Option<String>,
 }
 
 impl AsumConfig {
@@ -183,6 +220,18 @@ BREAKING CHANGE: the synchronous API is no longer supported."#.to_string();
             ollama_model: toml_config.ollama.as_ref().map(|o| o.model.clone()),
             gemini_api_key: toml_config.gemini.as_ref().map(|g| g.api_key.clone()),
             gemini_model: toml_config.gemini.as_ref().map(|g| g.model.clone()),
+            gemini_url: toml_config.gemini.as_ref().and_then(|g| g.url.clone()),
+            openai_api_key: toml_config.openai.as_ref().map(|o| o.api_key.clone()),
+            openai_model: toml_config.openai.as_ref().map(|o| o.model.clone()),
+            openai_url: toml_config.openai.as_ref().and_then(|o| o.url.clone()),
+            vertex_project_id: toml_config.vertexai.as_ref().map(|v| v.project_id.clone()),
+            vertex_location: toml_config.vertexai.as_ref().map(|v| v.location.clone()),
+            vertex_model: toml_config.vertexai.as_ref().map(|v| v.model.clone()),
+            vertex_access_token: toml_config
+                .vertexai
+                .as_ref()
+                .and_then(|v| v.access_token.clone()),
+            vertex_url: toml_config.vertexai.as_ref().and_then(|v| v.url.clone()),
         })
     }
 }
@@ -230,6 +279,9 @@ mod tests {
         assert_eq!(config.git_extensions, vec![".rs", ".py"]);
         assert_eq!(config.gemini_api_key.unwrap(), "test_key");
         assert_eq!(config.gemini_model.unwrap(), "gemini-pro");
+        assert!(config.gemini_url.is_none());
+        assert!(config.openai_api_key.is_none());
+        assert!(config.vertex_project_id.is_none());
     }
 
     #[test]
@@ -341,6 +393,8 @@ mod tests {
         assert_eq!(config.ai_num_predict, 10);
         assert!(config.ollama_url.is_none());
         assert!(config.gemini_api_key.is_none());
+        assert!(config.openai_api_key.is_none());
+        assert!(config.vertex_project_id.is_none());
     }
 
     #[test]
