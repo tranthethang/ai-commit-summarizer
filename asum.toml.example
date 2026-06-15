@@ -33,9 +33,9 @@ url = "http://localhost:11434/api/chat"
 
 # [vertexai]
 # project_id = "your-gcp-project-id"
-# location = "us-central1"
-# model = "gemini-1.5-flash"
+# location = "global"
+# model = "gemini-3.5-flash"
 # Optional: Static access token. If omitted, assumes `gcloud auth print-access-token` is available.
 # access_token = "ya29..."
 # Optional: Override the default URL
-# url = "https://us-central1-aiplatform.googleapis.com/v1/projects/your-gcp-project-id/locations/us-central1/publishers/google/models/gemini-1.5-flash:generateContent"
+# url = "https://aiplatform.googleapis.com/v1/projects/your-gcp-project-id/locations/global/publishers/google/models/gemini-3.5-flash:generateContent"
