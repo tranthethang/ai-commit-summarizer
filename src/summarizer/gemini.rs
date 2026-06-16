@@ -3,7 +3,10 @@
 //! This module implements the `Summarizer` trait using Google's Gemini API
 //! to generate commit messages.
 
-use crate::summarizer::{AIConfig, Summarizer, generate_prompt};
+use crate::summarizer::{
+    AIConfig, Summarizer, build_http_client, clean_ai_response, generate_prompt,
+    log_verbose_prompt, log_verbose_response,
+};
 use anyhow::Context;
 use async_trait::async_trait;
 use reqwest::Client;
@@ -28,7 +31,7 @@ impl GeminiProvider {
             .unwrap_or_else(|| "https://generativelanguage.googleapis.com".to_string());
         Self {
             config,
-            client: Client::new(),
+            client: build_http_client(),
             base_url,
         }
     }
@@ -37,7 +40,7 @@ impl GeminiProvider {
     pub fn new_with_url(config: AIConfig, url: String) -> Self {
         Self {
             config,
-            client: Client::new(),
+            client: build_http_client(),
             base_url: url,
         }
     }
@@ -57,15 +60,12 @@ impl Summarizer for GeminiProvider {
         let prompt = generate_prompt(&self.config.user_prompt, diff);
 
         if self.config.verbose {
-            eprintln!("================ PROMPT ================");
-            eprintln!("*** System Prompt ***\n{}", self.config.system_prompt);
-            eprintln!("*** User Prompt ***\n{}", prompt);
-            eprintln!("========================================");
+            log_verbose_prompt(&self.config.system_prompt, &prompt);
         }
 
         let url = format!(
-            "{}/v1beta/models/{}:generateContent?key={}",
-            self.base_url, self.config.model, api_key
+            "{}/v1beta/models/{}:generateContent",
+            self.base_url, self.config.model
         );
 
         // Implementation of exponential backoff for rate limiting (HTTP 429)
@@ -77,6 +77,7 @@ impl Summarizer for GeminiProvider {
             let res = self
                 .client
                 .post(&url)
+                .header("x-goog-api-key", api_key)
                 .json(&json!({
                     "system_instruction": {
                         "parts": [{
@@ -124,17 +125,7 @@ impl Summarizer for GeminiProvider {
         // Parse the JSON response from Gemini
         let res_text = response.text().await?;
         if self.config.verbose {
-            eprintln!("================ RESPONSE JSON ================");
-            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&res_text) {
-                if let Ok(pretty) = serde_json::to_string_pretty(&parsed) {
-                    eprintln!("{}", pretty);
-                } else {
-                    eprintln!("{}", res_text);
-                }
-            } else {
-                eprintln!("{}", res_text);
-            }
-            eprintln!("===============================================");
+            log_verbose_response(&res_text);
         }
         let res_json: serde_json::Value = serde_json::from_str(&res_text)?;
 
@@ -144,22 +135,7 @@ impl Summarizer for GeminiProvider {
             .unwrap_or("")
             .trim();
 
-        // Post-process the generated message to remove boilerplate text
-        // that AI models sometimes include in their responses.
-        let final_msg = commit_msg
-            .lines()
-            .map(|l| l.trim())
-            .filter(|l| {
-                !l.is_empty()
-                    && !l.to_lowercase().contains("diff to analyze")
-                    && !l.to_lowercase().contains("input diff")
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        if final_msg.is_empty() {
-            anyhow::bail!("AI generated an empty or invalid message.");
-        }
+        let final_msg = clean_ai_response(commit_msg)?;
 
         Ok(final_msg)
     }
@@ -187,25 +163,6 @@ mod tests {
         };
         let provider = GeminiProvider::new(ai_config);
         assert_eq!(provider.config.model, "gemini-pro");
-    }
-
-    #[test]
-    fn test_gemini_filtering() {
-        let commit_msg = "fix: bug\n\nInput diff:\n...\nResult";
-        let final_msg = commit_msg
-            .lines()
-            .map(|l| l.trim())
-            .filter(|l| {
-                !l.is_empty()
-                    && !l.to_lowercase().contains("diff to analyze")
-                    && !l.to_lowercase().contains("input diff")
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        assert!(final_msg.contains("fix: bug"));
-        assert!(final_msg.contains("Result"));
-        assert!(!final_msg.to_lowercase().contains("input diff"));
     }
 
     #[tokio::test]

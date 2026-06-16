@@ -83,6 +83,16 @@ asum
 
 `asum` will analyze your staged diff (or file list), output the suggested commit message, and copy it to your system clipboard. Simply press `Cmd+V` (or `Ctrl+V`) to paste it into your `git commit` command.
 
+### CLI Options
+
+The `asum` command supports the following options:
+
+- `asum` — Run the default summarization flow.
+- `asum -v` or `asum --verbose` — Run with verbose logging. This will print the full diff/prompt sent to the AI, and the full JSON response received from the AI, which is useful for debugging.
+- `asum verify` — Verify your `asum.toml` configuration syntax and structure.
+- `asum --help` — Print help information.
+- `asum --version` — Print version information.
+
 ---
 
 ## Configuration

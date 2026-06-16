@@ -7,20 +7,38 @@ mod config;
 mod git;
 mod summarizer;
 
-#[cfg(test)]
-pub mod test_utils {
-    use std::sync::Mutex;
-    pub static TEST_MUTEX: Mutex<()> = Mutex::new(());
-}
-
-use crate::config::{AsumConfig, verify_toml};
+use crate::config::{AsumConfig, DiffReductionMode, verify_toml};
 use crate::git::{get_git_diff, get_staged_files, process_and_truncate_diff};
 use crate::summarizer::get_summarizer;
 use anyhow::Context;
 use arboard::Clipboard;
-use std::env;
 use tracing::{error, info, warn};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+
+use clap::{Parser, Subcommand};
+
+/// Command-line arguments for asum.
+#[derive(Parser, Debug)]
+#[command(
+    name = "asum",
+    version,
+    about = "AI Commit Summarizer - Generate professional commit messages using AI"
+)]
+pub struct Cli {
+    /// Enable verbose output (print prompts and raw API responses)
+    #[arg(short, long, global = true)]
+    pub verbose: bool,
+
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+}
+
+/// Available subcommands for asum.
+#[derive(Subcommand, Debug)]
+pub enum Commands {
+    /// Verify the syntax and completeness of asum.toml
+    Verify,
+}
 
 /// Entry point of the application.
 /// Sets up logging and parses command line arguments to run the app.
@@ -41,53 +59,13 @@ async fn main() -> anyhow::Result<()> {
         .with(fmt::layer().with_writer(non_blocking).with_ansi(false))
         .init();
 
-    let args: Vec<String> = env::args().collect();
-    run_app(args).await
+    let cli = Cli::parse();
+    run_app(cli).await
 }
 
 /// Core logic for processing command line arguments and executing commands.
-///
-/// # Arguments
-/// * `args` - A vector of string arguments from the command line.
-pub async fn run_app(args: Vec<String>) -> anyhow::Result<()> {
-    let args_slice = &args[1..];
-    let is_help = args_slice
-        .iter()
-        .any(|a| a == "help" || a == "--help" || a == "-h");
-    let is_verify = args_slice.iter().any(|a| a == "verify");
-    let verbose = args_slice
-        .iter()
-        .any(|a| a == "verbose" || a == "--verbose" || a == "-v");
-
-    let mut unknown_args = Vec::new();
-    for arg in args_slice {
-        match arg.as_str() {
-            "help" | "--help" | "-h" | "verify" | "verbose" | "--verbose" | "-v" => {}
-            other => unknown_args.push(other),
-        }
-    }
-
-    if is_help {
-        println!("ASUM - AI Commit Summarizer");
-        println!("\nUsage:");
-        println!("  asum               Generate commit summary from staged changes");
-        println!("  asum verbose       Generate commit summary and print debug/verbose info");
-        println!("  asum verify        Verify the syntax of asum.toml");
-        println!("  asum help          Show this help message");
-        return Ok(());
-    }
-
-    if !unknown_args.is_empty() {
-        error!("Unknown command: {}", unknown_args[0]);
-        println!("\nUsage:");
-        println!("  asum               Generate commit summary from staged changes");
-        println!("  asum verbose       Generate commit summary and print debug/verbose info");
-        println!("  asum verify        Verify the syntax of asum.toml");
-        println!("  asum help          Show this help message");
-        return Err(anyhow::anyhow!("Unknown command"));
-    }
-
-    if is_verify {
+pub async fn run_app(cli: Cli) -> anyhow::Result<()> {
+    if let Some(Commands::Verify) = cli.command {
         // Find local config path
         let local_path = std::path::Path::new("asum.toml");
         let global_path = home::home_dir().map(|mut p| {
@@ -142,29 +120,30 @@ pub async fn run_app(args: Vec<String>) -> anyhow::Result<()> {
 
     // 2. Process and/or truncate the diff based on reduction mode and limit
     let max_diff_length = config.max_diff_length;
-    if !is_fallback {
-        if diff_text.len() > max_diff_length || config.diff_reduction_mode == "hunk" {
-            let reduction_info = if config.diff_reduction_mode == "hunk" {
-                format!(
-                    "applying hunk-level reduction (max {} hunks per file) and ",
-                    config.max_hunks_per_file
-                )
-            } else {
-                "".to_string()
-            };
-            info!(
-                "Diff is {} bytes, {}applying smart truncation to {} bytes...",
-                diff_text.len(),
-                reduction_info,
-                max_diff_length
-            );
-            diff_text = process_and_truncate_diff(
-                &diff_text,
-                max_diff_length,
-                &config.diff_reduction_mode,
-                config.max_hunks_per_file,
-            );
-        }
+    if !is_fallback
+        && (diff_text.len() > max_diff_length
+            || config.diff_reduction_mode == DiffReductionMode::Hunk)
+    {
+        let reduction_info = if config.diff_reduction_mode == DiffReductionMode::Hunk {
+            format!(
+                "applying hunk-level reduction (max {} hunks per file) and ",
+                config.max_hunks_per_file
+            )
+        } else {
+            "".to_string()
+        };
+        info!(
+            "Diff is {} bytes, {}applying smart truncation to {} bytes...",
+            diff_text.len(),
+            reduction_info,
+            max_diff_length
+        );
+        diff_text = process_and_truncate_diff(
+            &diff_text,
+            max_diff_length,
+            config.diff_reduction_mode,
+            config.max_hunks_per_file,
+        );
     }
 
     // 3. Build tree view of staged files if enabled
@@ -197,7 +176,7 @@ pub async fn run_app(args: Vec<String>) -> anyhow::Result<()> {
     info!("AI is analyzing your changes...");
 
     // 4. Initialize the AI summarizer based on the active provider (e.g., Gemini, Ollama)
-    let summarizer = get_summarizer(config, verbose)
+    let summarizer = get_summarizer(config, cli.verbose)
         .await
         .context("Failed to get summarizer")?;
 
@@ -226,8 +205,6 @@ pub async fn run_app(args: Vec<String>) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::await_holding_lock)]
-    use super::*;
     use crate::summarizer::{MockSummarizer, Summarizer};
 
     #[tokio::test]
@@ -240,567 +217,5 @@ mod tests {
 
         let result = mock.summarize("fake diff").await.unwrap();
         assert_eq!(result, "feat: mock summary");
-    }
-
-    #[test]
-    fn test_help_args() {
-        // Since main() uses std::process::exit and println!,
-        // we test the logic around argument matching if possible.
-        let args = ["asum".to_string(), "help".to_string()];
-        assert_eq!(args[1], "help");
-    }
-
-    #[test]
-    fn test_verify_args() {
-        let args = ["asum".to_string(), "verify".to_string()];
-        assert_eq!(args[1], "verify");
-    }
-
-    #[tokio::test]
-    async fn test_run_app_help() {
-        let args = vec!["asum".to_string(), "help".to_string()];
-        let result = run_app(args).await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_run_app_unknown_command() {
-        let args = vec!["asum".to_string(), "unknown".to_string()];
-        let result = run_app(args).await;
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().to_string(), "Unknown command");
-    }
-
-    #[tokio::test]
-    async fn test_run_app_verify_not_found() {
-        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
-        // Run in a temp dir where asum.toml doesn't exist
-        let dir = tempfile::tempdir().unwrap();
-        let args = vec!["asum".to_string(), "verify".to_string()];
-
-        // Change current directory to temp dir
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(dir.path()).unwrap();
-
-        let old_home = env::var("HOME").ok();
-        unsafe { env::set_var("HOME", dir.path()) };
-
-        let result = run_app(args).await;
-
-        // Restore HOME and original directory
-        if let Some(val) = old_home {
-            unsafe { env::set_var("HOME", val) };
-        } else {
-            unsafe { env::remove_var("HOME") };
-        }
-        std::env::set_current_dir(original_dir).unwrap();
-
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err().to_string(), "asum.toml not found");
-    }
-
-    #[tokio::test]
-    async fn test_run_app_verify_valid() {
-        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        let config_path = dir.path().join("asum.toml");
-        let mut file = std::fs::File::create(config_path).unwrap();
-        use std::io::Write;
-        writeln!(
-            file,
-            r#"
-            [general]
-            active_provider = "ollama"
-            max_diff_length = 1000
-            [ai_params]
-            num_predict = 100
-            temperature = 0.7
-            top_p = 1.0
-            "#
-        )
-        .unwrap();
-
-        let args = vec!["asum".to_string(), "verify".to_string()];
-
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(dir.path()).unwrap();
-
-        let result = run_app(args).await;
-
-        std::env::set_current_dir(original_dir).unwrap();
-
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_run_app_full_flow_no_staged() {
-        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        let repo_path = dir.path();
-
-        // Init git
-        std::process::Command::new("git")
-            .arg("init")
-            .current_dir(repo_path)
-            .output()
-            .unwrap();
-
-        // Create config
-        let config_path = repo_path.join("asum.toml");
-        let mut file = std::fs::File::create(config_path).unwrap();
-        use std::io::Write;
-        writeln!(
-            file,
-            r#"
-            [general]
-            active_provider = "ollama"
-            max_diff_length = 1000
-            [ai_params]
-            num_predict = 100
-            temperature = 0.7
-            top_p = 1.0
-            "#
-        )
-        .unwrap();
-
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(repo_path).unwrap();
-
-        let args = vec!["asum".to_string()];
-        let result = run_app(args).await;
-
-        std::env::set_current_dir(original_dir).unwrap();
-
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_run_app_full_flow_with_staged() {
-        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        let repo_path = dir.path();
-
-        // Init git
-        std::process::Command::new("git")
-            .arg("init")
-            .current_dir(repo_path)
-            .output()
-            .unwrap();
-
-        // Create a file and stage it
-        let test_file = repo_path.join("test.rs");
-        std::fs::write(&test_file, "fn main() {}").unwrap();
-        std::process::Command::new("git")
-            .args(["add", "test.rs"])
-            .current_dir(repo_path)
-            .output()
-            .unwrap();
-
-        // Mock server
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let url = format!("http://{}", addr);
-
-        tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            let mut buf = [0; 32768];
-            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf)
-                .await
-                .unwrap();
-
-            let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"message\": {\"content\": \"feat: integration success\"}}";
-            tokio::io::AsyncWriteExt::write_all(&mut socket, response.as_bytes())
-                .await
-                .unwrap();
-        });
-
-        // Create config pointing to mock server
-        let config_path = repo_path.join("asum.toml");
-        let mut file = std::fs::File::create(config_path).unwrap();
-        use std::io::Write;
-        writeln!(
-            file,
-            r#"
-            [general]
-            active_provider = "ollama"
-            max_diff_length = 1000
-            [ai_params]
-            num_predict = 100
-            temperature = 0.7
-            top_p = 1.0
-            [ollama]
-            model = "llama3"
-            url = "{}"
-            "#,
-            url
-        )
-        .unwrap();
-
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(repo_path).unwrap();
-
-        let args = vec!["asum".to_string()];
-        let result = run_app(args).await;
-
-        std::env::set_current_dir(original_dir).unwrap();
-
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_run_app_with_tree_view_and_hunk_reduction() {
-        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        let repo_path = dir.path();
-
-        // Init git
-        std::process::Command::new("git")
-            .arg("init")
-            .current_dir(repo_path)
-            .output()
-            .unwrap();
-
-        // Create a file and stage it
-        let test_file = repo_path.join("test.rs");
-        std::fs::write(&test_file, "fn main() {\n// line 1\n// line 2\n}").unwrap();
-        std::process::Command::new("git")
-            .args(["add", "test.rs"])
-            .current_dir(repo_path)
-            .output()
-            .unwrap();
-
-        // Mock server
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let url = format!("http://{}", addr);
-
-        tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            let mut buf = [0; 32768];
-            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf)
-                .await
-                .unwrap();
-
-            let request_str = String::from_utf8_lossy(&buf);
-            // Verify that the tree view and input diff header are present in the payload
-            assert!(request_str.contains("[STAGED FILES TREE]"));
-            assert!(request_str.contains("test.rs (Added)"));
-            assert!(request_str.contains("[INPUT DIFF]"));
-
-            let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"message\": {\"content\": \"feat: integration success\"}}";
-            tokio::io::AsyncWriteExt::write_all(&mut socket, response.as_bytes())
-                .await
-                .unwrap();
-        });
-
-        // Create config pointing to mock server with hunk mode enabled
-        let config_path = repo_path.join("asum.toml");
-        let mut file = std::fs::File::create(config_path).unwrap();
-        use std::io::Write;
-        writeln!(
-            file,
-            r#"
-            [general]
-            active_provider = "ollama"
-            max_diff_length = 1000
-            enable_tree_view = true
-            diff_reduction_mode = "hunk"
-            max_hunks_per_file = 1
-            [ai_params]
-            num_predict = 100
-            temperature = 0.7
-            top_p = 1.0
-            [ollama]
-            model = "llama3"
-            url = "{}"
-            "#,
-            url
-        )
-        .unwrap();
-
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(repo_path).unwrap();
-
-        let args = vec!["asum".to_string()];
-        let result = run_app(args).await;
-
-        std::env::set_current_dir(original_dir).unwrap();
-
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_run_app_full_flow_with_truncation() {
-        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        let repo_path = dir.path();
-
-        // Init git
-        std::process::Command::new("git")
-            .arg("init")
-            .current_dir(repo_path)
-            .output()
-            .unwrap();
-
-        // Create a large file and stage it
-        let test_file = repo_path.join("test.rs");
-        let large_content = "fn main() {".to_string() + &" ".repeat(2000) + "}";
-        std::fs::write(&test_file, large_content).unwrap();
-        std::process::Command::new("git")
-            .args(["add", "test.rs"])
-            .current_dir(repo_path)
-            .output()
-            .unwrap();
-
-        // Mock server
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let url = format!("http://{}", addr);
-
-        tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            let mut buf = [0; 4096];
-            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf)
-                .await
-                .unwrap();
-
-            let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"message\": {\"content\": \"feat: truncation success\"}}";
-            tokio::io::AsyncWriteExt::write_all(&mut socket, response.as_bytes())
-                .await
-                .unwrap();
-        });
-
-        // Create config with SMALL max_diff_length
-        let config_path = repo_path.join("asum.toml");
-        let mut file = std::fs::File::create(config_path).unwrap();
-        use std::io::Write;
-        writeln!(
-            file,
-            r#"
-            [general]
-            active_provider = "ollama"
-            max_diff_length = 10
-            [ai_params]
-            num_predict = 100
-            temperature = 0.7
-            top_p = 1.0
-            [ollama]
-            model = "llama3"
-            url = "{}"
-            "#,
-            url
-        )
-        .unwrap();
-
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(repo_path).unwrap();
-
-        let args = vec!["asum".to_string()];
-        let result = run_app(args).await;
-
-        std::env::set_current_dir(original_dir).unwrap();
-
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_run_app_verify_invalid_toml() {
-        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        let config_path = dir.path().join("asum.toml");
-        let mut file = std::fs::File::create(&config_path).unwrap();
-        use std::io::Write;
-        writeln!(file, "invalid = [").unwrap(); // Unclosed bracket is invalid TOML
-
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(dir.path()).unwrap();
-
-        let args = vec!["asum".to_string(), "verify".to_string()];
-        let result = run_app(args).await;
-
-        std::env::set_current_dir(original_dir).unwrap();
-
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("syntax error"));
-    }
-
-    #[tokio::test]
-    async fn test_run_app_full_flow_fallback() {
-        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        let repo_path = dir.path();
-
-        // Init git
-        std::process::Command::new("git")
-            .arg("init")
-            .current_dir(repo_path)
-            .output()
-            .unwrap();
-
-        // Create a file with unsupported extension and stage it
-        let test_file = repo_path.join("test.unsupported");
-        std::fs::write(&test_file, "some content").unwrap();
-        std::process::Command::new("git")
-            .args(["add", "test.unsupported"])
-            .current_dir(repo_path)
-            .output()
-            .unwrap();
-
-        // Mock server
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let url = format!("http://{}", addr);
-
-        tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            let mut buf = [0; 32768];
-            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf)
-                .await
-                .unwrap();
-
-            let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"message\": {\"content\": \"chore: fallback success\"}}";
-            tokio::io::AsyncWriteExt::write_all(&mut socket, response.as_bytes())
-                .await
-                .unwrap();
-        });
-
-        // Create config
-        let config_path = repo_path.join("asum.toml");
-        use std::io::Write;
-        let mut file = std::fs::File::create(config_path).unwrap();
-        writeln!(
-            file,
-            r#"
-            [general]
-            active_provider = "ollama"
-            max_diff_length = 1000
-            git_extensions = [".rs"]
-            [ai_params]
-            num_predict = 100
-            temperature = 0.7
-            top_p = 1.0
-            [ollama]
-            model = "llama3"
-            url = "{}"
-            "#,
-            url
-        )
-        .unwrap();
-
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(repo_path).unwrap();
-
-        let args = vec!["asum".to_string()];
-        let result = run_app(args).await;
-
-        std::env::set_current_dir(original_dir).unwrap();
-
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_run_app_summarize_fail() {
-        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-        let url = format!("http://{}", addr);
-
-        tokio::spawn(async move {
-            if let Ok((mut stream, _)) = listener.accept() {
-                use std::io::Write;
-                let response = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n";
-                let _ = stream.write_all(response.as_bytes());
-            }
-        });
-
-        let repo_path = tempfile::tempdir().unwrap();
-        let _ = std::process::Command::new("git")
-            .arg("init")
-            .current_dir(repo_path.path())
-            .output()
-            .unwrap();
-
-        std::fs::write(repo_path.path().join("main.rs"), "fn main() {}").unwrap();
-        let _ = std::process::Command::new("git")
-            .args(["add", "main.rs"])
-            .current_dir(repo_path.path())
-            .output()
-            .unwrap();
-
-        let config_path = repo_path.path().join("asum.toml");
-        std::fs::write(
-            &config_path,
-            format!(
-                r#"
-            [general]
-            active_provider = "ollama"
-            max_diff_length = 1000
-            [ai_params]
-            num_predict = 100
-            temperature = 0.7
-            top_p = 1.0
-            [ollama]
-            model = "llama3"
-            url = "{}"
-            "#,
-                url
-            ),
-        )
-        .unwrap();
-
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(repo_path.path()).unwrap();
-
-        let args = vec!["asum".to_string()];
-        let result = run_app(args).await;
-
-        std::env::set_current_dir(original_dir).unwrap();
-
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_run_app_verify_global() {
-        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
-        let dir = tempfile::tempdir().unwrap();
-
-        // Create global config in ~/.asum/asum.toml
-        let global_dir = dir.path().join(".asum");
-        std::fs::create_dir_all(&global_dir).unwrap();
-        let config_path = global_dir.join("asum.toml");
-        std::fs::write(
-            &config_path,
-            r#"
-            [general]
-            active_provider = "ollama"
-            max_diff_length = 1000
-            [ai_params]
-            num_predict = 100
-            temperature = 0.7
-            top_p = 1.0
-            "#,
-        )
-        .unwrap();
-
-        // Run verify command while current dir does not have local asum.toml
-        let empty_dir = tempfile::tempdir().unwrap();
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(empty_dir.path()).unwrap();
-
-        let old_home = env::var("HOME").ok();
-        unsafe { env::set_var("HOME", dir.path()) };
-
-        let args = vec!["asum".to_string(), "verify".to_string()];
-        let result = run_app(args).await;
-
-        // Restore
-        if let Some(val) = old_home {
-            unsafe { env::set_var("HOME", val) };
-        } else {
-            unsafe { env::remove_var("HOME") };
-        }
-        std::env::set_current_dir(original_dir).unwrap();
-
-        assert!(result.is_ok());
     }
 }

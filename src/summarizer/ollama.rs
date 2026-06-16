@@ -3,7 +3,10 @@
 //! This module implements the `Summarizer` trait using the Ollama API
 //! (local or remote) to generate commit messages.
 
-use crate::summarizer::{AIConfig, Summarizer, generate_prompt};
+use crate::summarizer::{
+    AIConfig, Summarizer, build_http_client, clean_ai_response, generate_prompt,
+    log_verbose_prompt, log_verbose_response,
+};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
@@ -19,7 +22,7 @@ impl OllamaProvider {
     pub fn new(config: AIConfig) -> Self {
         Self {
             config,
-            client: Client::new(),
+            client: build_http_client(),
         }
     }
 }
@@ -32,10 +35,7 @@ impl Summarizer for OllamaProvider {
         let prompt = generate_prompt(&self.config.user_prompt, diff);
 
         if self.config.verbose {
-            eprintln!("================ PROMPT ================");
-            eprintln!("*** System Prompt ***\n{}", self.config.system_prompt);
-            eprintln!("*** User Prompt ***\n{}", prompt);
-            eprintln!("========================================");
+            log_verbose_prompt(&self.config.system_prompt, &prompt);
         }
 
         // Determine the Ollama API endpoint, defaulting to localhost
@@ -91,17 +91,7 @@ impl Summarizer for OllamaProvider {
         // Parse the JSON response from Ollama
         let res_text = response.text().await?;
         if self.config.verbose {
-            eprintln!("================ RESPONSE JSON ================");
-            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&res_text) {
-                if let Ok(pretty) = serde_json::to_string_pretty(&parsed) {
-                    eprintln!("{}", pretty);
-                } else {
-                    eprintln!("{}", res_text);
-                }
-            } else {
-                eprintln!("{}", res_text);
-            }
-            eprintln!("===============================================");
+            log_verbose_response(&res_text);
         }
         let res_json: serde_json::Value = serde_json::from_str(&res_text)?;
 
@@ -112,23 +102,7 @@ impl Summarizer for OllamaProvider {
             .unwrap_or("")
             .trim();
 
-        // Post-process the generated message to remove boilerplate text
-        // that AI models sometimes include in their responses.
-        let final_msg = commit_msg
-            .lines()
-            .map(|l| l.trim())
-            .filter(|l| {
-                // Remove empty lines and lines that echo the input diff instructions
-                !l.is_empty()
-                    && !l.to_lowercase().contains("diff to analyze")
-                    && !l.to_lowercase().contains("input diff")
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        if final_msg.is_empty() {
-            anyhow::bail!("AI generated an empty or invalid message.");
-        }
+        let final_msg = clean_ai_response(commit_msg)?;
 
         Ok(final_msg)
     }
@@ -156,25 +130,6 @@ mod tests {
         };
         let provider = OllamaProvider::new(ai_config);
         assert_eq!(provider.config.model, "llama3");
-    }
-
-    #[test]
-    fn test_ollama_filtering() {
-        let commit_msg = "feat: add feature\n\nInput diff to analyze:\nSome diff\nActual message";
-        let final_msg = commit_msg
-            .lines()
-            .map(|l| l.trim())
-            .filter(|l| {
-                !l.is_empty()
-                    && !l.to_lowercase().contains("diff to analyze")
-                    && !l.to_lowercase().contains("input diff")
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        assert!(final_msg.contains("feat: add feature"));
-        assert!(final_msg.contains("Actual message"));
-        assert!(!final_msg.to_lowercase().contains("input diff"));
     }
 
     #[tokio::test]

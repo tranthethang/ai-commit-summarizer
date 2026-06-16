@@ -8,12 +8,60 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
+/// Supported AI providers.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+pub enum Provider {
+    #[serde(rename = "gemini")]
+    Gemini,
+    #[serde(rename = "ollama")]
+    Ollama,
+    #[serde(rename = "openai")]
+    OpenAI,
+    #[serde(rename = "vertexai")]
+    VertexAI,
+}
+
+/// Modes for reducing diff length when it exceeds limits.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+pub enum DiffReductionMode {
+    #[serde(rename = "file")]
+    File,
+    #[serde(rename = "hunk")]
+    Hunk,
+}
+
+/// Provider-specific configurations.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ProviderConfig {
+    Gemini {
+        api_key: String,
+        model: String,
+        url: Option<String>,
+    },
+    Ollama {
+        model: String,
+        url: String,
+    },
+    OpenAI {
+        api_key: String,
+        model: String,
+        url: Option<String>,
+    },
+    VertexAI {
+        project_id: String,
+        location: String,
+        model: String,
+        access_token: Option<String>,
+        url: Option<String>,
+    },
+}
+
 /// Main configuration structure for the application.
 /// It holds settings for AI providers, git filters, and prompt templates.
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AsumConfig {
-    /// The AI provider to use (e.g., "gemini" or "ollama").
-    pub active_provider: String,
+    /// The AI provider config containing model and connection details.
+    pub provider: ProviderConfig,
     /// Maximum character length of the git diff to send to the AI.
     pub max_diff_length: usize,
     /// List of file extensions to include in the git diff.
@@ -21,7 +69,7 @@ pub struct AsumConfig {
     /// Whether to generate and prepend a tree view of staged files to the diff.
     pub enable_tree_view: bool,
     /// Mode to reduce/truncate the diff when it is too large: "file" or "hunk".
-    pub diff_reduction_mode: String,
+    pub diff_reduction_mode: DiffReductionMode,
     /// Max hunks per file in "hunk" reduction mode.
     pub max_hunks_per_file: usize,
     /// System-level instruction for the AI model.
@@ -34,32 +82,6 @@ pub struct AsumConfig {
     pub ai_top_p: f64,
     /// Maximum number of tokens to generate in the response.
     pub ai_num_predict: i32,
-    /// Base URL for the Ollama API.
-    pub ollama_url: Option<String>,
-    /// Model name for Ollama (e.g., "llama3").
-    pub ollama_model: Option<String>,
-    /// API key for Google Gemini.
-    pub gemini_api_key: Option<String>,
-    /// Model name for Gemini (e.g., "gemini-1.5-flash").
-    pub gemini_model: Option<String>,
-    /// Custom URL for Gemini.
-    pub gemini_url: Option<String>,
-    /// API key for OpenAI.
-    pub openai_api_key: Option<String>,
-    /// Model name for OpenAI.
-    pub openai_model: Option<String>,
-    /// Custom URL for OpenAI.
-    pub openai_url: Option<String>,
-    /// GCP Project ID for Vertex AI.
-    pub vertex_project_id: Option<String>,
-    /// GCP Location for Vertex AI.
-    pub vertex_location: Option<String>,
-    /// Model name for Vertex AI.
-    pub vertex_model: Option<String>,
-    /// Optional explicit access token for Vertex AI.
-    pub vertex_access_token: Option<String>,
-    /// Custom URL for Vertex AI.
-    pub vertex_url: Option<String>,
 }
 
 /// Internal structure representing the raw TOML file layout.
@@ -76,11 +98,11 @@ struct TomlConfig {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct GeneralConfig {
-    pub active_provider: String,
+    pub active_provider: Provider,
     pub max_diff_length: usize,
     pub git_extensions: Option<Vec<String>>,
     pub enable_tree_view: Option<bool>,
-    pub diff_reduction_mode: Option<String>,
+    pub diff_reduction_mode: Option<DiffReductionMode>,
     pub max_hunks_per_file: Option<usize>,
 }
 
@@ -130,16 +152,25 @@ impl AsumConfig {
     /// Loads configuration by searching for 'asum.toml' in the current directory,
     /// then falling back to '~/.asum/asum.toml'.
     pub fn load() -> Result<Self> {
+        Self::load_with_search(None, None)
+    }
+
+    /// Loads configuration with custom search paths (used for unit testing without mutating environment/process state).
+    pub fn load_with_search(current_dir: Option<&Path>, home_dir: Option<&Path>) -> Result<Self> {
         // 1. Check local config
-        let local_path = Path::new("asum.toml");
+        let local_path = current_dir
+            .unwrap_or_else(|| Path::new("."))
+            .join("asum.toml");
         if local_path.exists() {
-            return Self::load_from_toml(local_path)
+            return Self::load_from_toml(&local_path)
                 .with_context(|| format!("Failed to load local config: {:?}", local_path));
         }
 
         // 2. Check global config
-        let mut global_path =
-            home::home_dir().ok_or_else(|| anyhow!("Could not find home directory"))?;
+        let mut global_path = match home_dir {
+            Some(path) => path.to_path_buf(),
+            None => home::home_dir().ok_or_else(|| anyhow!("Could not find home directory"))?,
+        };
         global_path.push(".asum");
         global_path.push("asum.toml");
 
@@ -214,11 +245,59 @@ BREAKING CHANGE: the synchronous API is no longer supported."#.to_string();
             .to_string();
 
         let default_enable_tree_view = true;
-        let default_diff_reduction_mode = "file".to_string();
+        let default_diff_reduction_mode = DiffReductionMode::File;
         let default_max_hunks_per_file = 3;
 
+        let provider = match toml_config.general.active_provider {
+            Provider::Gemini => {
+                let gemini = toml_config
+                    .gemini
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("Missing [gemini] configuration section"))?;
+                ProviderConfig::Gemini {
+                    api_key: gemini.api_key.clone(),
+                    model: gemini.model.clone(),
+                    url: gemini.url.clone(),
+                }
+            }
+            Provider::Ollama => {
+                let ollama = toml_config
+                    .ollama
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("Missing [ollama] configuration section"))?;
+                ProviderConfig::Ollama {
+                    model: ollama.model.clone(),
+                    url: ollama.url.clone(),
+                }
+            }
+            Provider::OpenAI => {
+                let openai = toml_config
+                    .openai
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("Missing [openai] configuration section"))?;
+                ProviderConfig::OpenAI {
+                    api_key: openai.api_key.clone(),
+                    model: openai.model.clone(),
+                    url: openai.url.clone(),
+                }
+            }
+            Provider::VertexAI => {
+                let vertex = toml_config
+                    .vertexai
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("Missing [vertexai] configuration section"))?;
+                ProviderConfig::VertexAI {
+                    project_id: vertex.project_id.clone(),
+                    location: vertex.location.clone(),
+                    model: vertex.model.clone(),
+                    access_token: vertex.access_token.clone(),
+                    url: vertex.url.clone(),
+                }
+            }
+        };
+
         Ok(AsumConfig {
-            active_provider: toml_config.general.active_provider,
+            provider,
             max_diff_length: toml_config.general.max_diff_length,
             git_extensions: toml_config
                 .general
@@ -231,7 +310,6 @@ BREAKING CHANGE: the synchronous API is no longer supported."#.to_string();
             diff_reduction_mode: toml_config
                 .general
                 .diff_reduction_mode
-                .clone()
                 .unwrap_or(default_diff_reduction_mode),
             max_hunks_per_file: toml_config
                 .general
@@ -250,37 +328,72 @@ BREAKING CHANGE: the synchronous API is no longer supported."#.to_string();
             ai_temperature: toml_config.ai_params.temperature,
             ai_top_p: toml_config.ai_params.top_p,
             ai_num_predict: toml_config.ai_params.num_predict,
-            ollama_url: toml_config.ollama.as_ref().map(|o| o.url.clone()),
-            ollama_model: toml_config.ollama.as_ref().map(|o| o.model.clone()),
-            gemini_api_key: toml_config.gemini.as_ref().map(|g| g.api_key.clone()),
-            gemini_model: toml_config.gemini.as_ref().map(|g| g.model.clone()),
-            gemini_url: toml_config.gemini.as_ref().and_then(|g| g.url.clone()),
-            openai_api_key: toml_config.openai.as_ref().map(|o| o.api_key.clone()),
-            openai_model: toml_config.openai.as_ref().map(|o| o.model.clone()),
-            openai_url: toml_config.openai.as_ref().and_then(|o| o.url.clone()),
-            vertex_project_id: toml_config.vertexai.as_ref().map(|v| v.project_id.clone()),
-            vertex_location: toml_config.vertexai.as_ref().map(|v| v.location.clone()),
-            vertex_model: toml_config.vertexai.as_ref().map(|v| v.model.clone()),
-            vertex_access_token: toml_config
-                .vertexai
-                .as_ref()
-                .and_then(|v| v.access_token.clone()),
-            vertex_url: toml_config.vertexai.as_ref().and_then(|v| v.url.clone()),
         })
     }
 }
 
-/// Validates that a TOML file follows the expected schema.
 pub fn verify_toml<P: AsRef<Path>>(path: P) -> Result<()> {
     let content = fs::read_to_string(path)?;
-    let _: TomlConfig = toml::from_str(&content)?;
+    let toml_config: TomlConfig = toml::from_str(&content)?;
+
+    match toml_config.general.active_provider {
+        Provider::Gemini => {
+            let gemini = toml_config.gemini.as_ref().ok_or_else(|| {
+                anyhow::anyhow!("[gemini] section is required when active_provider = \"gemini\"")
+            })?;
+            if gemini.model.is_empty() {
+                anyhow::bail!("model in [gemini] section cannot be empty");
+            }
+            if gemini.api_key.is_empty() {
+                anyhow::bail!("api_key in [gemini] section cannot be empty");
+            }
+        }
+        Provider::Ollama => {
+            let ollama = toml_config.ollama.as_ref().ok_or_else(|| {
+                anyhow::anyhow!("[ollama] section is required when active_provider = \"ollama\"")
+            })?;
+            if ollama.model.is_empty() {
+                anyhow::bail!("model in [ollama] section cannot be empty");
+            }
+            if ollama.url.is_empty() {
+                anyhow::bail!("url in [ollama] section cannot be empty");
+            }
+        }
+        Provider::OpenAI => {
+            let openai = toml_config.openai.as_ref().ok_or_else(|| {
+                anyhow::anyhow!("[openai] section is required when active_provider = \"openai\"")
+            })?;
+            if openai.model.is_empty() {
+                anyhow::bail!("model in [openai] section cannot be empty");
+            }
+            if openai.api_key.is_empty() {
+                anyhow::bail!("api_key in [openai] section cannot be empty");
+            }
+        }
+        Provider::VertexAI => {
+            let vertex = toml_config.vertexai.as_ref().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "[vertexai] section is required when active_provider = \"vertexai\""
+                )
+            })?;
+            if vertex.model.is_empty() {
+                anyhow::bail!("model in [vertexai] section cannot be empty");
+            }
+            if vertex.project_id.is_empty() {
+                anyhow::bail!("project_id in [vertexai] section cannot be empty");
+            }
+            if vertex.location.is_empty() {
+                anyhow::bail!("location in [vertexai] section cannot be empty");
+            }
+        }
+    }
+
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
@@ -308,14 +421,16 @@ mod tests {
         .unwrap();
 
         let config = AsumConfig::load_from_toml(file.path()).unwrap();
-        assert_eq!(config.active_provider, "gemini");
+        assert_eq!(
+            config.provider,
+            ProviderConfig::Gemini {
+                api_key: "test_key".to_string(),
+                model: "gemini-pro".to_string(),
+                url: None,
+            }
+        );
         assert_eq!(config.max_diff_length, 1000);
         assert_eq!(config.git_extensions, vec![".rs", ".py"]);
-        assert_eq!(config.gemini_api_key.unwrap(), "test_key");
-        assert_eq!(config.gemini_model.unwrap(), "gemini-pro");
-        assert!(config.gemini_url.is_none());
-        assert!(config.openai_api_key.is_none());
-        assert!(config.vertex_project_id.is_none());
     }
 
     #[test]
@@ -332,12 +447,22 @@ mod tests {
             num_predict = 50
             temperature = 0.7
             top_p = 1.0
+
+            [ollama]
+            model = "llama3"
+            url = "http://localhost:11434"
             "#
         )
         .unwrap();
 
         let config = AsumConfig::load_from_toml(file.path()).unwrap();
-        assert_eq!(config.active_provider, "ollama");
+        assert_eq!(
+            config.provider,
+            ProviderConfig::Ollama {
+                model: "llama3".to_string(),
+                url: "http://localhost:11434".to_string(),
+            }
+        );
         // Check if default extensions are loaded
         assert!(!config.git_extensions.is_empty());
         assert!(config.git_extensions.contains(&"*.rs".to_string()));
@@ -364,6 +489,9 @@ mod tests {
                     num_predict = 50
                     temperature = 0.7
                     top_p = 1.0
+                    [ollama]
+                    model = "llama3"
+                    url = "http://localhost:11434"
                 "#,
                 is_ok: true,
             },
@@ -380,6 +508,35 @@ mod tests {
             TestCase {
                 name: "invalid toml syntax",
                 content: "invalid = [",
+                is_ok: false,
+            },
+            TestCase {
+                name: "missing required active provider section",
+                content: r#"
+                    [general]
+                    active_provider = "gemini"
+                    max_diff_length = 2000
+                    [ai_params]
+                    num_predict = 50
+                    temperature = 0.7
+                    top_p = 1.0
+                "#,
+                is_ok: false,
+            },
+            TestCase {
+                name: "empty model in active provider section",
+                content: r#"
+                    [general]
+                    active_provider = "gemini"
+                    max_diff_length = 2000
+                    [ai_params]
+                    num_predict = 50
+                    temperature = 0.7
+                    top_p = 1.0
+                    [gemini]
+                    api_key = "test"
+                    model = ""
+                "#,
                 is_ok: false,
             },
         ];
@@ -417,18 +574,24 @@ mod tests {
             num_predict = 10
             temperature = 0.1
             top_p = 0.1
+
+            [ollama]
+            model = "llama3"
+            url = "http://localhost:11434"
             "#
         )
         .unwrap();
 
         let config = AsumConfig::load_from_toml(file.path()).unwrap();
-        assert_eq!(config.active_provider, "ollama");
+        assert_eq!(
+            config.provider,
+            ProviderConfig::Ollama {
+                model: "llama3".to_string(),
+                url: "http://localhost:11434".to_string(),
+            }
+        );
         assert_eq!(config.max_diff_length, 500);
         assert_eq!(config.ai_num_predict, 10);
-        assert!(config.ollama_url.is_none());
-        assert!(config.gemini_api_key.is_none());
-        assert!(config.openai_api_key.is_none());
-        assert!(config.vertex_project_id.is_none());
     }
 
     #[test]
@@ -447,6 +610,10 @@ mod tests {
             [prompts]
             system_prompt = "Custom system prompt"
             user_prompt = "Custom user prompt: {{diff}}"
+
+            [ollama]
+            model = "llama3"
+            url = "http://localhost:11434"
             "#;
         writeln!(file, "{}", toml_content).unwrap();
 
@@ -475,12 +642,16 @@ mod tests {
             num_predict = 100
             temperature = 0.7
             top_p = 1.0
+
+            [ollama]
+            model = "llama3"
+            url = "http://localhost:11434"
             "#;
         writeln!(file, "{}", toml_content).unwrap();
 
         let config = AsumConfig::load_from_toml(file.path()).unwrap();
-        assert_eq!(config.enable_tree_view, false);
-        assert_eq!(config.diff_reduction_mode, "hunk");
+        assert!(!config.enable_tree_view);
+        assert_eq!(config.diff_reduction_mode, DiffReductionMode::Hunk);
         assert_eq!(config.max_hunks_per_file, 5);
     }
 
@@ -499,29 +670,32 @@ mod tests {
             num_predict = 100
             temperature = 0.7
             top_p = 1.0
+            [ollama]
+            model = "llama3"
+            url = "http://localhost:11434"
             "#
         )
         .unwrap();
 
-        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(dir.path()).unwrap();
-
-        let result = AsumConfig::load();
-
-        std::env::set_current_dir(original_dir).unwrap();
+        let result = AsumConfig::load_with_search(Some(dir.path()), None);
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().active_provider, "ollama");
+        assert_eq!(
+            result.unwrap().provider,
+            ProviderConfig::Ollama {
+                model: "llama3".to_string(),
+                url: "http://localhost:11434".to_string(),
+            }
+        );
     }
 
     #[test]
     fn test_asum_config_load_global() {
-        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
         let temp_home =
             std::env::temp_dir().join(format!("fake_home_global_{}", std::process::id()));
-        fs::create_dir_all(temp_home.join(".asum")).unwrap();
-        let config_path = temp_home.join(".asum").join("asum.toml");
+        let global_dir = temp_home.join(".asum");
+        fs::create_dir_all(&global_dir).unwrap();
+        let config_path = global_dir.join("asum.toml");
 
         let mut file = fs::File::create(&config_path).unwrap();
         writeln!(
@@ -534,6 +708,9 @@ mod tests {
             num_predict = 100
             temperature = 0.7
             top_p = 1.0
+            [ollama]
+            model = "llama3"
+            url = "http://localhost:11434"
             "#
         )
         .unwrap();
@@ -541,47 +718,31 @@ mod tests {
         let temp_cwd = std::env::temp_dir().join(format!("empty_cwd_{}", std::process::id()));
         fs::create_dir_all(&temp_cwd).unwrap();
 
-        let old_cwd = env::current_dir().unwrap();
-        env::set_current_dir(&temp_cwd).unwrap();
+        let result = AsumConfig::load_with_search(Some(&temp_cwd), Some(&temp_home));
 
-        let old_home = env::var("HOME").ok();
-        unsafe { env::set_var("HOME", &temp_home) };
-
-        let result = AsumConfig::load();
-
-        // Restore
-        env::set_current_dir(old_cwd).unwrap();
-        if let Some(val) = old_home {
-            unsafe { env::set_var("HOME", val) };
-        } else {
-            unsafe { env::remove_var("HOME") };
-        }
+        // Clean up temp dirs
+        let _ = fs::remove_dir_all(&temp_home);
+        let _ = fs::remove_dir_all(&temp_cwd);
 
         let config = result.expect("Should load global config");
-        assert_eq!(config.active_provider, "ollama");
+        assert_eq!(
+            config.provider,
+            ProviderConfig::Ollama {
+                model: "llama3".to_string(),
+                url: "http://localhost:11434".to_string(),
+            }
+        );
         assert_eq!(config.max_diff_length, 500);
     }
 
     #[test]
     fn test_asum_config_load_no_config() {
-        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
         let temp_dir = std::env::temp_dir().join(format!("no_config_test_{}", std::process::id()));
         fs::create_dir_all(&temp_dir).unwrap();
 
-        let old_cwd = env::current_dir().unwrap();
-        env::set_current_dir(&temp_dir).unwrap();
+        let result = AsumConfig::load_with_search(Some(&temp_dir), Some(&temp_dir));
 
-        let old_home = env::var("HOME").ok();
-        unsafe { env::set_var("HOME", &temp_dir) }; // Point HOME to empty temp dir
-
-        let result = AsumConfig::load();
-
-        env::set_current_dir(old_cwd).unwrap();
-        if let Some(val) = old_home {
-            unsafe { env::set_var("HOME", val) };
-        } else {
-            unsafe { env::remove_var("HOME") };
-        }
+        let _ = fs::remove_dir_all(&temp_dir);
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("not found"));

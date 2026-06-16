@@ -3,6 +3,7 @@
 //! This module interacts with the Git CLI to retrieve staged changes
 //! and file lists for AI analysis.
 
+use crate::config::DiffReductionMode;
 use std::collections::BTreeMap;
 use std::process::Command;
 
@@ -29,6 +30,11 @@ pub fn get_git_diff_in_path(extensions: &[String], path: &str) -> anyhow::Result
 
     let output = Command::new("git").args(args).current_dir(path).output()?;
 
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git diff failed: {}", stderr.trim());
+    }
+
     let diff_text = String::from_utf8_lossy(&output.stdout).to_string();
     Ok(diff_text)
 }
@@ -52,6 +58,12 @@ pub fn get_staged_files_in_path(path: &str) -> anyhow::Result<String> {
         ":(exclude)*.min.js",
     ];
     let output = Command::new("git").args(args).current_dir(path).output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git diff failed: {}", stderr.trim());
+    }
+
     let files_text = String::from_utf8_lossy(&output.stdout).to_string();
     Ok(files_text)
 }
@@ -90,20 +102,6 @@ fn extract_filename_from_header(header: &str) -> &str {
         return &header[pos + 3..];
     }
     header
-}
-
-/// Smartly truncates a git diff to fit within `max_len` characters.
-///
-/// Strategy (Option A - whole-file granularity):
-/// 1. Parse the diff into per-file blocks at `diff --git` boundaries.
-/// 2. Add each block to the output as long as the cumulative length stays within `max_len`.
-/// 3. If a block would exceed the budget, skip it entirely and record the filename as omitted.
-/// 4. If the diff was truncated, append a footer:
-///    `[TRUNCATED: N more file(s) not shown: file_a.rs, file_b.ts]`
-///
-/// If the diff fits entirely within the budget, it is returned unchanged.
-pub fn smart_truncate_diff(diff: &str, max_len: usize) -> String {
-    process_and_truncate_diff(diff, max_len, "file", 0)
 }
 
 #[derive(Debug, Default)]
@@ -286,7 +284,7 @@ fn truncate_hunks_per_file(file_block: &str, max_hunks: usize) -> String {
 pub fn process_and_truncate_diff(
     diff: &str,
     max_len: usize,
-    mode: &str,
+    mode: DiffReductionMode,
     max_hunks: usize,
 ) -> String {
     if diff.is_empty() {
@@ -295,7 +293,7 @@ pub fn process_and_truncate_diff(
 
     let blocks = split_diff_into_file_blocks(diff);
 
-    let processed_blocks: Vec<(String, String)> = if mode == "hunk" {
+    let processed_blocks: Vec<(String, String)> = if mode == DiffReductionMode::Hunk {
         blocks
             .into_iter()
             .map(|(header, block)| {
@@ -342,14 +340,19 @@ pub fn process_and_truncate_diff(
 #[cfg(test)]
 mod tests {
     use super::extract_filename_from_header;
-    use super::smart_truncate_diff;
     use super::split_diff_into_file_blocks;
     use super::*;
     use std::fs::File;
     use std::io::Write;
     use std::process::Command;
     use tempfile::tempdir;
-
+    fn make_file_block(name: &str, lines: usize) -> String {
+        let mut s = format!("diff --git a/{name} b/{name}\n--- a/{name}\n+++ b/{name}\n");
+        for i in 0..lines {
+            s.push_str(&format!("+line {i}\n"));
+        }
+        s
+    }
     #[test]
     fn test_get_git_diff_no_staged() {
         let dir = tempdir().unwrap();
@@ -475,75 +478,6 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    // ---------- smart_truncate_diff tests ----------
-
-    fn make_file_block(name: &str, lines: usize) -> String {
-        let mut s = format!("diff --git a/{name} b/{name}\n--- a/{name}\n+++ b/{name}\n");
-        for i in 0..lines {
-            s.push_str(&format!("+line {i}\n"));
-        }
-        s
-    }
-
-    #[test]
-    fn test_smart_truncate_diff_fits_entirely() {
-        let diff = make_file_block("main.rs", 5);
-        let result = smart_truncate_diff(&diff, 10_000);
-        assert_eq!(result, diff, "Diff that fits should be returned unchanged");
-    }
-
-    #[test]
-    fn test_smart_truncate_diff_empty() {
-        let result = smart_truncate_diff("", 1000);
-        assert_eq!(result, "");
-    }
-
-    #[test]
-    fn test_smart_truncate_diff_single_file_too_large() {
-        // A single file that exceeds the budget entirely -> only footer emitted.
-        let diff = make_file_block("huge.rs", 100);
-        let result = smart_truncate_diff(&diff, 10);
-        assert!(
-            result.contains("[TRUNCATED:"),
-            "Should contain TRUNCATED footer"
-        );
-        assert!(
-            result.contains("huge.rs"),
-            "Footer should name the omitted file"
-        );
-    }
-
-    #[test]
-    fn test_smart_truncate_diff_multiple_files_partial() {
-        let block_a = make_file_block("alpha.rs", 2);
-        let block_b = make_file_block("beta.ts", 100); // too large
-        let block_c = make_file_block("gamma.go", 100); // also too large
-        let diff = format!("{block_a}{block_b}{block_c}");
-
-        // Budget: just enough for block_a
-        let budget = block_a.len() + 50;
-        let result = smart_truncate_diff(&diff, budget);
-
-        assert!(result.contains("alpha.rs"), "alpha.rs should be included");
-        assert!(!result.contains("+line 0\n+line 1\n") || result.contains("alpha.rs"));
-        assert!(
-            result.contains("[TRUNCATED:"),
-            "Should have TRUNCATED footer"
-        );
-        assert!(
-            result.contains("beta.ts"),
-            "beta.ts should be in omitted list"
-        );
-        assert!(
-            result.contains("gamma.go"),
-            "gamma.go should be in omitted list"
-        );
-        assert!(
-            result.contains("2 more file(s)"),
-            "Footer should count 2 omitted files"
-        );
-    }
-
     #[test]
     fn test_extract_filename_from_header() {
         assert_eq!(
@@ -644,14 +578,22 @@ mod tests {
                          @@ -30,5 +30,5 @@\n-old3\n+new3\n";
 
         // Test hunk reduction mode
-        let result = process_and_truncate_diff(file_diff, 10000, "hunk", 1);
+        let result = process_and_truncate_diff(file_diff, 10000, DiffReductionMode::Hunk, 1);
         assert!(result.contains("@@ -10,10 +10,12 @@"));
         assert!(!result.contains("@@ -1,5 +1,5 @@"));
 
         // Test file reduction mode (which does not do hunk truncation)
-        let result_file = process_and_truncate_diff(file_diff, 10000, "file", 1);
+        let result_file = process_and_truncate_diff(file_diff, 10000, DiffReductionMode::File, 1);
         assert!(result_file.contains("@@ -1,5 +1,5 @@"));
         assert!(result_file.contains("@@ -10,10 +10,12 @@"));
         assert!(result_file.contains("@@ -30,5 +30,5 @@"));
+    }
+
+    #[test]
+    fn test_get_git_diff_not_a_repo() {
+        let dir = tempdir().unwrap();
+        let result = get_git_diff_in_path(&["*.rs".to_string()], dir.path().to_str().unwrap());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("git diff failed"));
     }
 }
