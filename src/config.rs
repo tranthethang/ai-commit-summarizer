@@ -18,6 +18,12 @@ pub struct AsumConfig {
     pub max_diff_length: usize,
     /// List of file extensions to include in the git diff.
     pub git_extensions: Vec<String>,
+    /// Whether to generate and prepend a tree view of staged files to the diff.
+    pub enable_tree_view: bool,
+    /// Mode to reduce/truncate the diff when it is too large: "file" or "hunk".
+    pub diff_reduction_mode: String,
+    /// Max hunks per file in "hunk" reduction mode.
+    pub max_hunks_per_file: usize,
     /// System-level instruction for the AI model.
     pub system_prompt: String,
     /// User-level prompt template containing the {{diff}} placeholder.
@@ -73,6 +79,9 @@ struct GeneralConfig {
     pub active_provider: String,
     pub max_diff_length: usize,
     pub git_extensions: Option<Vec<String>>,
+    pub enable_tree_view: Option<bool>,
+    pub diff_reduction_mode: Option<String>,
+    pub max_hunks_per_file: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -204,6 +213,10 @@ BREAKING CHANGE: the synchronous API is no longer supported."#.to_string();
 [OUTPUT]"#
             .to_string();
 
+        let default_enable_tree_view = true;
+        let default_diff_reduction_mode = "file".to_string();
+        let default_max_hunks_per_file = 3;
+
         Ok(AsumConfig {
             active_provider: toml_config.general.active_provider,
             max_diff_length: toml_config.general.max_diff_length,
@@ -211,6 +224,19 @@ BREAKING CHANGE: the synchronous API is no longer supported."#.to_string();
                 .general
                 .git_extensions
                 .unwrap_or(default_extensions),
+            enable_tree_view: toml_config
+                .general
+                .enable_tree_view
+                .unwrap_or(default_enable_tree_view),
+            diff_reduction_mode: toml_config
+                .general
+                .diff_reduction_mode
+                .clone()
+                .unwrap_or(default_diff_reduction_mode),
+            max_hunks_per_file: toml_config
+                .general
+                .max_hunks_per_file
+                .unwrap_or(default_max_hunks_per_file),
             system_prompt: toml_config
                 .prompts
                 .as_ref()
@@ -432,6 +458,30 @@ mod tests {
             );
         }
         assert_eq!(config.system_prompt, "Custom system prompt");
+    }
+
+    #[test]
+    fn test_load_from_toml_with_tree_and_hunks() {
+        let mut file = NamedTempFile::new().unwrap();
+        let toml_content = r#"
+            [general]
+            active_provider = "ollama"
+            max_diff_length = 1000
+            enable_tree_view = false
+            diff_reduction_mode = "hunk"
+            max_hunks_per_file = 5
+
+            [ai_params]
+            num_predict = 100
+            temperature = 0.7
+            top_p = 1.0
+            "#;
+        writeln!(file, "{}", toml_content).unwrap();
+
+        let config = AsumConfig::load_from_toml(file.path()).unwrap();
+        assert_eq!(config.enable_tree_view, false);
+        assert_eq!(config.diff_reduction_mode, "hunk");
+        assert_eq!(config.max_hunks_per_file, 5);
     }
 
     #[test]

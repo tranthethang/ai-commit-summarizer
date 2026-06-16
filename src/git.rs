@@ -3,6 +3,7 @@
 //! This module interacts with the Git CLI to retrieve staged changes
 //! and file lists for AI analysis.
 
+use std::collections::BTreeMap;
 use std::process::Command;
 
 /// Retrieves the git diff of staged changes for the specified file extensions in the current directory.
@@ -102,16 +103,207 @@ fn extract_filename_from_header(header: &str) -> &str {
 ///
 /// If the diff fits entirely within the budget, it is returned unchanged.
 pub fn smart_truncate_diff(diff: &str, max_len: usize) -> String {
-    // If the diff already fits, return early without any allocation.
-    if diff.len() <= max_len {
+    process_and_truncate_diff(diff, max_len, "file", 0)
+}
+
+#[derive(Debug, Default)]
+struct TreeNode {
+    status: Option<String>,
+    children: BTreeMap<String, TreeNode>,
+}
+
+fn map_status(status_code: &str) -> String {
+    match status_code {
+        "A" => "Added".to_string(),
+        "M" => "Modified".to_string(),
+        "D" => "Deleted".to_string(),
+        "R" => "Renamed".to_string(),
+        "C" => "Copied".to_string(),
+        "U" => "Updated but unmerged".to_string(),
+        s => s.to_string(),
+    }
+}
+
+fn format_tree_node(name: &str, node: &TreeNode, prefix: &str, is_last: bool, is_root: bool) -> String {
+    let mut result = String::new();
+    
+    if !is_root {
+        result.push_str(prefix);
+        if is_last {
+            result.push_str("└── ");
+        } else {
+            result.push_str("├── ");
+        }
+        
+        if let Some(ref status) = node.status {
+            result.push_str(&format!("{} ({})\n", name, status));
+        } else {
+            result.push_str(&format!("{}/\n", name));
+        }
+    } else {
+        result.push_str(".\n");
+    }
+    
+    let next_prefix = if is_root {
+        "".to_string()
+    } else if is_last {
+        format!("{}    ", prefix)
+    } else {
+        format!("{}│   ", prefix)
+    };
+    
+    let child_count = node.children.len();
+    for (i, (child_name, child_node)) in node.children.iter().enumerate() {
+        let child_is_last = i == child_count - 1;
+        result.push_str(&format_tree_node(child_name, child_node, &next_prefix, child_is_last, false));
+    }
+    
+    result
+}
+
+/// Parses a staged files `--name-status` list and constructs a formatted tree view.
+pub fn build_tree_view(staged_output: &str) -> String {
+    let mut root = TreeNode::default();
+    
+    for line in staged_output.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.is_empty() {
+            continue;
+        }
+        
+        let status_code = parts[0];
+        let (status_desc, path) = if status_code.starts_with('R') && parts.len() >= 3 {
+            (format!("Renamed from {}", parts[1]), parts[2])
+        } else if status_code.starts_with('C') && parts.len() >= 3 {
+            (format!("Copied from {}", parts[1]), parts[2])
+        } else if parts.len() >= 2 {
+            (map_status(status_code), parts[1])
+        } else {
+            continue;
+        };
+        
+        let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+        let mut current = &mut root;
+        for (i, &segment) in segments.iter().enumerate() {
+            let is_last = i == segments.len() - 1;
+            if is_last {
+                current.children.entry(segment.to_string())
+                    .or_insert_with(TreeNode::default)
+                    .status = Some(status_desc.clone());
+            } else {
+                current = current.children.entry(segment.to_string())
+                    .or_insert_with(TreeNode::default);
+            }
+        }
+    }
+    
+    if root.children.is_empty() {
+        return String::new();
+    }
+    
+    format_tree_node(".", &root, "", true, true)
+}
+
+/// Truncates a single file diff block, keeping only the top `max_hunks` largest hunks (by affected lines).
+/// Preserves the original file order of the kept hunks.
+fn truncate_hunks_per_file(file_block: &str, max_hunks: usize) -> String {
+    if max_hunks == 0 {
+        return file_block.to_string();
+    }
+
+    let mut header_lines = Vec::new();
+    let mut hunks: Vec<(String, usize)> = Vec::new();
+    let mut current_hunk = String::new();
+    let mut current_hunk_affected = 0;
+    let mut parsing_hunks = false;
+
+    for line in file_block.lines() {
+        if line.starts_with("@@ ") {
+            parsing_hunks = true;
+            if !current_hunk.is_empty() {
+                hunks.push((current_hunk.clone(), current_hunk_affected));
+            }
+            current_hunk = line.to_string() + "\n";
+            current_hunk_affected = 0;
+        } else if !parsing_hunks {
+            header_lines.push(line);
+        } else {
+            current_hunk.push_str(line);
+            current_hunk.push('\n');
+            if line.starts_with('+') || line.starts_with('-') {
+                current_hunk_affected += 1;
+            }
+        }
+    }
+
+    if !current_hunk.is_empty() {
+        hunks.push((current_hunk, current_hunk_affected));
+    }
+
+    if hunks.len() <= max_hunks {
+        return file_block.to_string();
+    }
+
+    let mut indexed_hunks: Vec<(usize, String, usize)> = hunks
+        .into_iter()
+        .enumerate()
+        .map(|(idx, (text, affected))| (idx, text, affected))
+        .collect();
+
+    indexed_hunks.sort_by(|a, b| b.2.cmp(&a.2));
+    indexed_hunks.truncate(max_hunks);
+    indexed_hunks.sort_by_key(|h| h.0);
+
+    let mut reconstructed = header_lines.join("\n") + "\n";
+    for (_, hunk_text, _) in indexed_hunks {
+        reconstructed.push_str(&hunk_text);
+    }
+    reconstructed
+}
+
+/// Processes a git diff string, optionally reducing it by keeping only the top hunks per file,
+/// and then truncates the result to fit within `max_len` characters.
+pub fn process_and_truncate_diff(
+    diff: &str,
+    max_len: usize,
+    mode: &str,
+    max_hunks: usize,
+) -> String {
+    if diff.is_empty() {
         return diff.to_string();
     }
 
     let blocks = split_diff_into_file_blocks(diff);
+    
+    let processed_blocks: Vec<(String, String)> = if mode == "hunk" {
+        blocks
+            .into_iter()
+            .map(|(header, block)| {
+                let truncated_block = truncate_hunks_per_file(&block, max_hunks);
+                (header, truncated_block)
+            })
+            .collect()
+    } else {
+        blocks
+    };
+
+    let mut reconstructed_diff = String::new();
+    for (_, block) in &processed_blocks {
+        reconstructed_diff.push_str(block);
+    }
+
+    if reconstructed_diff.len() <= max_len {
+        return reconstructed_diff;
+    }
+
     let mut output = String::new();
     let mut omitted: Vec<String> = Vec::new();
 
-    for (header, block) in &blocks {
+    for (header, block) in &processed_blocks {
         if output.len() + block.len() <= max_len {
             output.push_str(block);
         } else {
@@ -128,9 +320,6 @@ pub fn smart_truncate_diff(diff: &str, max_len: usize) -> String {
         output.push_str(&footer);
     }
 
-    // Safety fallback: if even the first file was larger than max_len,
-    // output may still be empty (only footer). Return the footer so the AI
-    // at least knows what was staged.
     output
 }
 
@@ -384,5 +573,69 @@ mod tests {
 
         let files = get_staged_files_in_path(repo_path.to_str().unwrap()).unwrap();
         assert!(files.contains("A\ttest.txt"));
+    }
+
+    #[test]
+    fn test_build_tree_view_empty() {
+        assert_eq!(build_tree_view(""), "");
+        assert_eq!(build_tree_view("   \n  \n"), "");
+    }
+
+    #[test]
+    fn test_build_tree_view_standard() {
+        let input = "M\tsrc/main.rs\nA\tsrc/git.rs\nD\tCargo.toml\n";
+        let tree = build_tree_view(input);
+        
+        let expected = ".\n├── Cargo.toml (Deleted)\n└── src/\n    ├── git.rs (Added)\n    └── main.rs (Modified)\n";
+        assert_eq!(tree, expected);
+    }
+
+    #[test]
+    fn test_build_tree_view_renamed_and_copied() {
+        let input = "R100\told.rs\tnew.rs\nC085\torigin.rs\tcopy.rs\n";
+        let tree = build_tree_view(input);
+        
+        let expected = ".\n├── copy.rs (Copied from origin.rs)\n└── new.rs (Renamed from old.rs)\n";
+        assert_eq!(tree, expected);
+    }
+
+    #[test]
+    fn test_truncate_hunks_per_file() {
+        let file_diff = "diff --git a/a.rs b/a.rs\nindex 123..456\n--- a/a.rs\n+++ b/a.rs\n\
+                         @@ -1,5 +1,5 @@\n-old1\n+new1\n\
+                         @@ -10,10 +10,12 @@\n-old2\n-old22\n+new2\n+new22\n+new23\n\
+                         @@ -30,5 +30,5 @@\n-old3\n+new3\n";
+        
+        // With max_hunks = 1, it should keep only the second hunk (which has 5 affected lines vs 2 in others)
+        let truncated = truncate_hunks_per_file(file_diff, 1);
+        assert!(truncated.contains("@@ -10,10 +10,12 @@"));
+        assert!(!truncated.contains("@@ -1,5 +1,5 @@"));
+        assert!(!truncated.contains("@@ -30,5 +30,5 @@"));
+
+        // With max_hunks = 2, it should keep hunk 2 (5 affected) and hunk 1 or 3 (2 affected).
+        // Since we sort back to original order, it should preserve relative positions.
+        let truncated_2 = truncate_hunks_per_file(file_diff, 2);
+        assert!(truncated_2.contains("@@ -1,5 +1,5 @@"));
+        assert!(truncated_2.contains("@@ -10,10 +10,12 @@"));
+        assert!(!truncated_2.contains("@@ -30,5 +30,5 @@"));
+    }
+
+    #[test]
+    fn test_process_and_truncate_diff_modes() {
+        let file_diff = "diff --git a/a.rs b/a.rs\nindex 123..456\n--- a/a.rs\n+++ b/a.rs\n\
+                         @@ -1,5 +1,5 @@\n-old1\n+new1\n\
+                         @@ -10,10 +10,12 @@\n-old2\n-old22\n+new2\n+new22\n+new23\n\
+                         @@ -30,5 +30,5 @@\n-old3\n+new3\n";
+
+        // Test hunk reduction mode
+        let result = process_and_truncate_diff(file_diff, 10000, "hunk", 1);
+        assert!(result.contains("@@ -10,10 +10,12 @@"));
+        assert!(!result.contains("@@ -1,5 +1,5 @@"));
+        
+        // Test file reduction mode (which does not do hunk truncation)
+        let result_file = process_and_truncate_diff(file_diff, 10000, "file", 1);
+        assert!(result_file.contains("@@ -1,5 +1,5 @@"));
+        assert!(result_file.contains("@@ -10,10 +10,12 @@"));
+        assert!(result_file.contains("@@ -30,5 +30,5 @@"));
     }
 }

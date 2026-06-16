@@ -3,6 +3,12 @@ active_provider = "ollama"
 max_diff_length = 36000
 # Optional: List of file extensions to include in git diff
 # git_extensions = ["*.rs", "*.js", "*.ts", "*.py", "*.go"]
+# Optional: Enable tree view of staged files (default: true)
+# enable_tree_view = true
+# Optional: Mode to truncate/reduce the diff if it is too large: "file" (whole files) or "hunk" (top hunks per file) (default: "file")
+# diff_reduction_mode = "file"
+# Optional: Maximum number of hunks per file to send in "hunk" reduction mode (default: 3)
+# max_hunks_per_file = 3
 
 [prompts]
 # Optional: Identity and rules for the AI
