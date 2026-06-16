@@ -49,7 +49,21 @@ impl Summarizer for OpenAIProvider {
             log_verbose_prompt(&self.config.system_prompt, &prompt);
         }
 
-        let payload = serde_json::json!({
+        // Reasoning models (like o1, o3-mini) do not support `max_tokens`, `temperature`,
+        // or `top_p`. They require `max_completion_tokens` instead.
+        let model_name = self
+            .config
+            .model
+            .split('/')
+            .next_back()
+            .unwrap_or(&self.config.model);
+        let is_reasoning = model_name.starts_with('o')
+            && model_name
+                .chars()
+                .nth(1)
+                .is_some_and(|c| c.is_ascii_digit() || c == '-');
+
+        let mut payload = serde_json::json!({
             "model": self.config.model,
             "messages": [
                 {
@@ -61,10 +75,15 @@ impl Summarizer for OpenAIProvider {
                     "content": &prompt
                 }
             ],
-            "temperature": self.config.temperature,
-            "top_p": self.config.top_p,
-            "max_tokens": self.config.num_predict,
         });
+
+        if is_reasoning {
+            payload["max_completion_tokens"] = serde_json::json!(self.config.num_predict);
+        } else {
+            payload["temperature"] = serde_json::json!(self.config.temperature);
+            payload["top_p"] = serde_json::json!(self.config.top_p);
+            payload["max_tokens"] = serde_json::json!(self.config.num_predict);
+        }
 
         let response = self
             .client
