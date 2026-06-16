@@ -186,7 +186,7 @@ impl AsumConfig {
 
     /// Reads and parses a TOML configuration file from the specified path.
     /// Fills in default values for missing optional fields.
-    fn load_from_toml<P: AsRef<Path>>(path: P) -> Result<Self> {
+    pub fn load_from_toml<P: AsRef<Path>>(path: P) -> Result<Self> {
         let content = fs::read_to_string(path)?;
         let toml_config: TomlConfig = toml::from_str(&content)?;
 
@@ -332,419 +332,69 @@ BREAKING CHANGE: the synchronous API is no longer supported."#.to_string();
     }
 }
 
+fn verify_gemini_config(gemini: Option<&GeminiConfig>) -> Result<()> {
+    let config = gemini.ok_or_else(|| {
+        anyhow::anyhow!("[gemini] section is required when active_provider = \"gemini\"")
+    })?;
+    if config.model.is_empty() {
+        anyhow::bail!("model in [gemini] section cannot be empty");
+    }
+    if config.api_key.is_empty() {
+        anyhow::bail!("api_key in [gemini] section cannot be empty");
+    }
+    Ok(())
+}
+
+fn verify_ollama_config(ollama: Option<&OllamaConfig>) -> Result<()> {
+    let config = ollama.ok_or_else(|| {
+        anyhow::anyhow!("[ollama] section is required when active_provider = \"ollama\"")
+    })?;
+    if config.model.is_empty() {
+        anyhow::bail!("model in [ollama] section cannot be empty");
+    }
+    if config.url.is_empty() {
+        anyhow::bail!("url in [ollama] section cannot be empty");
+    }
+    Ok(())
+}
+
+fn verify_openai_config(openai: Option<&OpenAIConfig>) -> Result<()> {
+    let config = openai.ok_or_else(|| {
+        anyhow::anyhow!("[openai] section is required when active_provider = \"openai\"")
+    })?;
+    if config.model.is_empty() {
+        anyhow::bail!("model in [openai] section cannot be empty");
+    }
+    if config.api_key.is_empty() {
+        anyhow::bail!("api_key in [openai] section cannot be empty");
+    }
+    Ok(())
+}
+
+fn verify_vertexai_config(vertex: Option<&VertexAIConfig>) -> Result<()> {
+    let config = vertex.ok_or_else(|| {
+        anyhow::anyhow!("[vertexai] section is required when active_provider = \"vertexai\"")
+    })?;
+    if config.model.is_empty() {
+        anyhow::bail!("model in [vertexai] section cannot be empty");
+    }
+    if config.project_id.is_empty() {
+        anyhow::bail!("project_id in [vertexai] section cannot be empty");
+    }
+    if config.location.is_empty() {
+        anyhow::bail!("location in [vertexai] section cannot be empty");
+    }
+    Ok(())
+}
+
 pub fn verify_toml<P: AsRef<Path>>(path: P) -> Result<()> {
     let content = fs::read_to_string(path)?;
     let toml_config: TomlConfig = toml::from_str(&content)?;
 
     match toml_config.general.active_provider {
-        Provider::Gemini => {
-            let gemini = toml_config.gemini.as_ref().ok_or_else(|| {
-                anyhow::anyhow!("[gemini] section is required when active_provider = \"gemini\"")
-            })?;
-            if gemini.model.is_empty() {
-                anyhow::bail!("model in [gemini] section cannot be empty");
-            }
-            if gemini.api_key.is_empty() {
-                anyhow::bail!("api_key in [gemini] section cannot be empty");
-            }
-        }
-        Provider::Ollama => {
-            let ollama = toml_config.ollama.as_ref().ok_or_else(|| {
-                anyhow::anyhow!("[ollama] section is required when active_provider = \"ollama\"")
-            })?;
-            if ollama.model.is_empty() {
-                anyhow::bail!("model in [ollama] section cannot be empty");
-            }
-            if ollama.url.is_empty() {
-                anyhow::bail!("url in [ollama] section cannot be empty");
-            }
-        }
-        Provider::OpenAI => {
-            let openai = toml_config.openai.as_ref().ok_or_else(|| {
-                anyhow::anyhow!("[openai] section is required when active_provider = \"openai\"")
-            })?;
-            if openai.model.is_empty() {
-                anyhow::bail!("model in [openai] section cannot be empty");
-            }
-            if openai.api_key.is_empty() {
-                anyhow::bail!("api_key in [openai] section cannot be empty");
-            }
-        }
-        Provider::VertexAI => {
-            let vertex = toml_config.vertexai.as_ref().ok_or_else(|| {
-                anyhow::anyhow!(
-                    "[vertexai] section is required when active_provider = \"vertexai\""
-                )
-            })?;
-            if vertex.model.is_empty() {
-                anyhow::bail!("model in [vertexai] section cannot be empty");
-            }
-            if vertex.project_id.is_empty() {
-                anyhow::bail!("project_id in [vertexai] section cannot be empty");
-            }
-            if vertex.location.is_empty() {
-                anyhow::bail!("location in [vertexai] section cannot be empty");
-            }
-        }
-    }
-
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Write;
-    use tempfile::NamedTempFile;
-
-    #[test]
-    fn test_load_from_toml_full() {
-        let mut file = NamedTempFile::new().unwrap();
-        writeln!(
-            file,
-            r#"
-            [general]
-            active_provider = "gemini"
-            max_diff_length = 1000
-            git_extensions = [".rs", ".py"]
-
-            [ai_params]
-            num_predict = 100
-            temperature = 0.5
-            top_p = 0.9
-
-            [gemini]
-            api_key = "test_key"
-            model = "gemini-pro"
-            "#
-        )
-        .unwrap();
-
-        let config = AsumConfig::load_from_toml(file.path()).unwrap();
-        assert_eq!(
-            config.provider,
-            ProviderConfig::Gemini {
-                api_key: "test_key".to_string(),
-                model: "gemini-pro".to_string(),
-                url: None,
-            }
-        );
-        assert_eq!(config.max_diff_length, 1000);
-        assert_eq!(config.git_extensions, vec![".rs", ".py"]);
-    }
-
-    #[test]
-    fn test_load_from_toml_defaults() {
-        let mut file = NamedTempFile::new().unwrap();
-        writeln!(
-            file,
-            r#"
-            [general]
-            active_provider = "ollama"
-            max_diff_length = 2000
-
-            [ai_params]
-            num_predict = 50
-            temperature = 0.7
-            top_p = 1.0
-
-            [ollama]
-            model = "llama3"
-            url = "http://localhost:11434"
-            "#
-        )
-        .unwrap();
-
-        let config = AsumConfig::load_from_toml(file.path()).unwrap();
-        assert_eq!(
-            config.provider,
-            ProviderConfig::Ollama {
-                model: "llama3".to_string(),
-                url: "http://localhost:11434".to_string(),
-            }
-        );
-        // Check if default extensions are loaded
-        assert!(!config.git_extensions.is_empty());
-        assert!(config.git_extensions.contains(&"*.rs".to_string()));
-        // Check if default system prompt is loaded
-        assert!(config.system_prompt.contains("expert Git Commit Generator"));
-    }
-
-    #[test]
-    fn test_verify_toml_table_driven() {
-        struct TestCase {
-            name: &'static str,
-            content: &'static str,
-            is_ok: bool,
-        }
-
-        let cases = vec![
-            TestCase {
-                name: "valid full config",
-                content: r#"
-                    [general]
-                    active_provider = "ollama"
-                    max_diff_length = 2000
-                    [ai_params]
-                    num_predict = 50
-                    temperature = 0.7
-                    top_p = 1.0
-                    [ollama]
-                    model = "llama3"
-                    url = "http://localhost:11434"
-                "#,
-                is_ok: true,
-            },
-            TestCase {
-                name: "missing general section",
-                content: r#"
-                    [ai_params]
-                    num_predict = 50
-                    temperature = 0.7
-                    top_p = 1.0
-                "#,
-                is_ok: false,
-            },
-            TestCase {
-                name: "invalid toml syntax",
-                content: "invalid = [",
-                is_ok: false,
-            },
-            TestCase {
-                name: "missing required active provider section",
-                content: r#"
-                    [general]
-                    active_provider = "gemini"
-                    max_diff_length = 2000
-                    [ai_params]
-                    num_predict = 50
-                    temperature = 0.7
-                    top_p = 1.0
-                "#,
-                is_ok: false,
-            },
-            TestCase {
-                name: "empty model in active provider section",
-                content: r#"
-                    [general]
-                    active_provider = "gemini"
-                    max_diff_length = 2000
-                    [ai_params]
-                    num_predict = 50
-                    temperature = 0.7
-                    top_p = 1.0
-                    [gemini]
-                    api_key = "test"
-                    model = ""
-                "#,
-                is_ok: false,
-            },
-        ];
-
-        for case in cases {
-            let mut file = NamedTempFile::new().unwrap();
-            writeln!(file, "{}", case.content).unwrap();
-            let result = verify_toml(file.path());
-            assert_eq!(
-                result.is_ok(),
-                case.is_ok,
-                "Failed test case: {}",
-                case.name
-            );
-        }
-    }
-
-    #[test]
-    #[should_panic(expected = "No such file or directory")]
-    fn test_load_from_toml_non_existent() {
-        AsumConfig::load_from_toml("non_existent_file.toml").unwrap();
-    }
-
-    #[test]
-    fn test_load_from_toml_minimal() {
-        let mut file = NamedTempFile::new().unwrap();
-        writeln!(
-            file,
-            r#"
-            [general]
-            active_provider = "ollama"
-            max_diff_length = 500
-
-            [ai_params]
-            num_predict = 10
-            temperature = 0.1
-            top_p = 0.1
-
-            [ollama]
-            model = "llama3"
-            url = "http://localhost:11434"
-            "#
-        )
-        .unwrap();
-
-        let config = AsumConfig::load_from_toml(file.path()).unwrap();
-        assert_eq!(
-            config.provider,
-            ProviderConfig::Ollama {
-                model: "llama3".to_string(),
-                url: "http://localhost:11434".to_string(),
-            }
-        );
-        assert_eq!(config.max_diff_length, 500);
-        assert_eq!(config.ai_num_predict, 10);
-    }
-
-    #[test]
-    fn test_load_from_toml_with_custom_prompts() {
-        let mut file = NamedTempFile::new().unwrap();
-        let toml_content = r#"
-            [general]
-            active_provider = "ollama"
-            max_diff_length = 1000
-
-            [ai_params]
-            num_predict = 100
-            temperature = 0.7
-            top_p = 1.0
-
-            [prompts]
-            system_prompt = "Custom system prompt"
-            user_prompt = "Custom user prompt: {{diff}}"
-
-            [ollama]
-            model = "llama3"
-            url = "http://localhost:11434"
-            "#;
-        writeln!(file, "{}", toml_content).unwrap();
-
-        let config = AsumConfig::load_from_toml(file.path()).unwrap();
-        if config.user_prompt != "Custom user prompt: {{diff}}" {
-            panic!(
-                "CONTENT: [{}], PARSED: [{}]",
-                toml_content, config.user_prompt
-            );
-        }
-        assert_eq!(config.system_prompt, "Custom system prompt");
-    }
-
-    #[test]
-    fn test_load_from_toml_with_tree_and_hunks() {
-        let mut file = NamedTempFile::new().unwrap();
-        let toml_content = r#"
-            [general]
-            active_provider = "ollama"
-            max_diff_length = 1000
-            enable_tree_view = false
-            diff_reduction_mode = "hunk"
-            max_hunks_per_file = 5
-
-            [ai_params]
-            num_predict = 100
-            temperature = 0.7
-            top_p = 1.0
-
-            [ollama]
-            model = "llama3"
-            url = "http://localhost:11434"
-            "#;
-        writeln!(file, "{}", toml_content).unwrap();
-
-        let config = AsumConfig::load_from_toml(file.path()).unwrap();
-        assert!(!config.enable_tree_view);
-        assert_eq!(config.diff_reduction_mode, DiffReductionMode::Hunk);
-        assert_eq!(config.max_hunks_per_file, 5);
-    }
-
-    #[test]
-    fn test_asum_config_load_local() {
-        let dir = tempfile::tempdir().unwrap();
-        let config_path = dir.path().join("asum.toml");
-        let mut file = fs::File::create(config_path).unwrap();
-        writeln!(
-            file,
-            r#"
-            [general]
-            active_provider = "ollama"
-            max_diff_length = 1000
-            [ai_params]
-            num_predict = 100
-            temperature = 0.7
-            top_p = 1.0
-            [ollama]
-            model = "llama3"
-            url = "http://localhost:11434"
-            "#
-        )
-        .unwrap();
-
-        let result = AsumConfig::load_with_search(Some(dir.path()), None);
-
-        assert!(result.is_ok());
-        assert_eq!(
-            result.unwrap().provider,
-            ProviderConfig::Ollama {
-                model: "llama3".to_string(),
-                url: "http://localhost:11434".to_string(),
-            }
-        );
-    }
-
-    #[test]
-    fn test_asum_config_load_global() {
-        let temp_home =
-            std::env::temp_dir().join(format!("fake_home_global_{}", std::process::id()));
-        let global_dir = temp_home.join(".asum");
-        fs::create_dir_all(&global_dir).unwrap();
-        let config_path = global_dir.join("asum.toml");
-
-        let mut file = fs::File::create(&config_path).unwrap();
-        writeln!(
-            file,
-            r#"
-            [general]
-            active_provider = "ollama"
-            max_diff_length = 500
-            [ai_params]
-            num_predict = 100
-            temperature = 0.7
-            top_p = 1.0
-            [ollama]
-            model = "llama3"
-            url = "http://localhost:11434"
-            "#
-        )
-        .unwrap();
-
-        let temp_cwd = std::env::temp_dir().join(format!("empty_cwd_{}", std::process::id()));
-        fs::create_dir_all(&temp_cwd).unwrap();
-
-        let result = AsumConfig::load_with_search(Some(&temp_cwd), Some(&temp_home));
-
-        // Clean up temp dirs
-        let _ = fs::remove_dir_all(&temp_home);
-        let _ = fs::remove_dir_all(&temp_cwd);
-
-        let config = result.expect("Should load global config");
-        assert_eq!(
-            config.provider,
-            ProviderConfig::Ollama {
-                model: "llama3".to_string(),
-                url: "http://localhost:11434".to_string(),
-            }
-        );
-        assert_eq!(config.max_diff_length, 500);
-    }
-
-    #[test]
-    fn test_asum_config_load_no_config() {
-        let temp_dir = std::env::temp_dir().join(format!("no_config_test_{}", std::process::id()));
-        fs::create_dir_all(&temp_dir).unwrap();
-
-        let result = AsumConfig::load_with_search(Some(&temp_dir), Some(&temp_dir));
-
-        let _ = fs::remove_dir_all(&temp_dir);
-
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("not found"));
+        Provider::Gemini => verify_gemini_config(toml_config.gemini.as_ref()),
+        Provider::Ollama => verify_ollama_config(toml_config.ollama.as_ref()),
+        Provider::OpenAI => verify_openai_config(toml_config.openai.as_ref()),
+        Provider::VertexAI => verify_vertexai_config(toml_config.vertexai.as_ref()),
     }
 }

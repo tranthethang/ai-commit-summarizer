@@ -3,15 +3,11 @@
 //! This tool automatically generates professional commit messages based on staged changes
 //! using AI providers like Google Gemini or local Ollama instances.
 
-mod config;
-mod git;
-mod summarizer;
-
-use crate::config::{AsumConfig, DiffReductionMode, verify_toml};
-use crate::git::{get_git_diff, get_staged_files, process_and_truncate_diff};
-use crate::summarizer::get_summarizer;
 use anyhow::Context;
 use arboard::Clipboard;
+use asum::config::{AsumConfig, DiffReductionMode, verify_toml};
+use asum::git::{get_git_diff, get_staged_files, process_and_truncate_diff};
+use asum::summarizer::get_summarizer;
 use tracing::{error, info, warn};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
@@ -66,59 +62,87 @@ async fn main() -> anyhow::Result<()> {
 /// Core logic for processing command line arguments and executing commands.
 pub async fn run_app(cli: Cli) -> anyhow::Result<()> {
     if let Some(Commands::Verify) = cli.command {
-        // Find local config path
-        let local_path = std::path::Path::new("asum.toml");
-        let global_path = home::home_dir().map(|mut p| {
-            p.push(".asum");
-            p.push("asum.toml");
-            p
-        });
-
-        let config_path = if local_path.exists() {
-            Some(local_path.to_path_buf())
-        } else if let Some(ref p) = global_path {
-            if p.exists() { Some(p.clone()) } else { None }
-        } else {
-            None
-        };
-
-        if let Some(path) = config_path {
-            match verify_toml(&path) {
-                Ok(_) => {
-                    println!("[OK] {} syntax is valid.", path.display());
-                    return Ok(());
-                }
-                Err(e) => {
-                    error!("{} syntax error: {}", path.display(), e);
-                    return Err(anyhow::anyhow!("{} syntax error: {}", path.display(), e));
-                }
-            }
-        } else {
-            error!("Configuration file 'asum.toml' not found locally or in ~/.asum/asum.toml");
-            return Err(anyhow::anyhow!("asum.toml not found"));
-        }
+        return handle_verify_command();
     }
 
     // Load Configuration (prioritize local asum.toml, then ~/.asum/asum.toml)
     let config = AsumConfig::load().context("Failed to load configuration")?;
 
+    let payload = prepare_payload(&config)?;
+    if payload.is_empty() {
+        warn!("No staged changes found.");
+        return Ok(());
+    }
+
+    info!("AI is analyzing your changes...");
+
+    // 4. Initialize the AI summarizer based on the active provider (e.g., Gemini, Ollama)
+    let summarizer = get_summarizer(config, cli.verbose)
+        .await
+        .context("Failed to get summarizer")?;
+
+    // 5. Request the AI to generate a commit message based on the payload
+    match summarizer.summarize(&payload).await {
+        Ok(final_msg) => {
+            println!("{}", final_msg);
+            handle_output(final_msg);
+        }
+        Err(e) => {
+            error!("Summarization failed: {}", e);
+            return Err(e);
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_verify_command() -> anyhow::Result<()> {
+    // Find local config path
+    let local_path = std::path::Path::new("asum.toml");
+    let global_path = home::home_dir().map(|mut p| {
+        p.push(".asum");
+        p.push("asum.toml");
+        p
+    });
+
+    let config_path = if local_path.exists() {
+        Some(local_path.to_path_buf())
+    } else if let Some(ref p) = global_path {
+        if p.exists() { Some(p.clone()) } else { None }
+    } else {
+        None
+    };
+
+    if let Some(path) = config_path {
+        match verify_toml(&path) {
+            Ok(_) => {
+                println!("[OK] {} syntax is valid.", path.display());
+                Ok(())
+            }
+            Err(e) => {
+                error!("{} syntax error: {}", path.display(), e);
+                Err(anyhow::anyhow!("{} syntax error: {}", path.display(), e))
+            }
+        }
+    } else {
+        error!("Configuration file 'asum.toml' not found locally or in ~/.asum/asum.toml");
+        Err(anyhow::anyhow!("asum.toml not found"))
+    }
+}
+
+fn prepare_payload(config: &AsumConfig) -> anyhow::Result<String> {
     // 1. Extract the git diff of staged changes
-    // Filters changes based on supported file extensions defined in config
     let mut diff_text = get_git_diff(&config.git_extensions).context("Failed to get git diff")?;
 
-    // If no code changes are found, try to get a list of staged file names as a fallback
     let is_fallback = diff_text.is_empty();
     if is_fallback {
         warn!("No staged changes found in supported code files. Falling back to file list...");
         diff_text = get_staged_files().context("Failed to get staged files")?;
-
         if diff_text.is_empty() {
-            warn!("No staged changes found.");
-            return Ok(());
+            return Ok(String::new());
         }
     }
 
-    // 2. Process and/or truncate the diff based on reduction mode and limit
     let max_diff_length = config.max_diff_length;
     if !is_fallback
         && (diff_text.len() > max_diff_length
@@ -146,7 +170,6 @@ pub async fn run_app(cli: Cli) -> anyhow::Result<()> {
         );
     }
 
-    // 3. Build tree view of staged files if enabled
     let mut tree_view = String::new();
     if config.enable_tree_view {
         let staged = if is_fallback {
@@ -155,11 +178,10 @@ pub async fn run_app(cli: Cli) -> anyhow::Result<()> {
             get_staged_files().unwrap_or_default()
         };
         if !staged.trim().is_empty() {
-            tree_view = crate::git::build_tree_view(&staged);
+            tree_view = asum::git::build_tree_view(&staged);
         }
     }
 
-    // Combine tree view and processed diff into final payload
     let payload = if !tree_view.is_empty() {
         if is_fallback {
             format!("[STAGED FILES TREE]\n{}", tree_view)
@@ -173,49 +195,15 @@ pub async fn run_app(cli: Cli) -> anyhow::Result<()> {
         diff_text
     };
 
-    info!("AI is analyzing your changes...");
-
-    // 4. Initialize the AI summarizer based on the active provider (e.g., Gemini, Ollama)
-    let summarizer = get_summarizer(config, cli.verbose)
-        .await
-        .context("Failed to get summarizer")?;
-
-    // 5. Request the AI to generate a commit message based on the payload
-    match summarizer.summarize(&payload).await {
-        Ok(final_msg) => {
-            println!("{}", final_msg);
-
-            // 5. Automatically copy the generated message to the system clipboard
-            if let Ok(mut clipboard) = Clipboard::new() {
-                if let Err(e) = clipboard.set_text(final_msg) {
-                    error!("Could not copy to clipboard: {}", e);
-                } else {
-                    info!("Message copied to clipboard. Press Cmd+V to paste.");
-                }
-            }
-        }
-        Err(e) => {
-            error!("Summarization failed: {}", e);
-            return Err(e);
-        }
-    }
-
-    Ok(())
+    Ok(payload)
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::summarizer::{MockSummarizer, Summarizer};
-
-    #[tokio::test]
-    async fn test_summarize_with_mock() {
-        let mut mock = MockSummarizer::new();
-        mock.expect_summarize()
-            .with(mockall::predicate::eq("fake diff"))
-            .times(1)
-            .returning(|_| Ok("feat: mock summary".to_string()));
-
-        let result = mock.summarize("fake diff").await.unwrap();
-        assert_eq!(result, "feat: mock summary");
+fn handle_output(final_msg: String) {
+    if let Ok(mut clipboard) = Clipboard::new() {
+        if let Err(e) = clipboard.set_text(final_msg) {
+            error!("Could not copy to clipboard: {}", e);
+        } else {
+            info!("Message copied to clipboard. Press Cmd+V to paste.");
+        }
     }
 }
