@@ -268,7 +268,7 @@ fn truncate_hunks_per_file(file_block: &str, max_hunks: usize) -> String {
         .map(|(idx, (text, affected))| (idx, text, affected))
         .collect();
 
-    indexed_hunks.sort_by(|a, b| b.2.cmp(&a.2));
+    indexed_hunks.sort_by_key(|b| std::cmp::Reverse(b.2));
     indexed_hunks.truncate(max_hunks);
     indexed_hunks.sort_by_key(|h| h.0);
 
