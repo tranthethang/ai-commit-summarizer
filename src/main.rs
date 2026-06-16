@@ -14,7 +14,7 @@ pub mod test_utils {
 }
 
 use crate::config::{AsumConfig, verify_toml};
-use crate::git::{get_git_diff, get_staged_files};
+use crate::git::{get_git_diff, get_staged_files, process_and_truncate_diff};
 use crate::summarizer::get_summarizer;
 use anyhow::Context;
 use arboard::Clipboard;
@@ -100,7 +100,8 @@ pub async fn run_app(args: Vec<String>) -> anyhow::Result<()> {
     let mut diff_text = get_git_diff(&config.git_extensions).context("Failed to get git diff")?;
 
     // If no code changes are found, try to get a list of staged file names as a fallback
-    if diff_text.is_empty() {
+    let is_fallback = diff_text.is_empty();
+    if is_fallback {
         warn!("No staged changes found in supported code files. Falling back to file list...");
         diff_text = get_staged_files().context("Failed to get staged files")?;
 
@@ -110,29 +111,63 @@ pub async fn run_app(args: Vec<String>) -> anyhow::Result<()> {
         }
     }
 
-    // 2. Truncate the diff if it exceeds the configured maximum length
-    // This prevents sending excessively large payloads to the AI model
+    // 2. Process and/or truncate the diff based on reduction mode and limit
     let max_diff_length = config.max_diff_length;
-
-    if diff_text.len() > max_diff_length {
-        info!(
-            "Diff is too large ({} bytes), truncating to {} bytes for AI...",
-            diff_text.len(),
-            max_diff_length
-        );
-        info!("You can increase this limit by updating 'max_diff_length' in your config.");
-        diff_text = diff_text.chars().take(max_diff_length).collect();
+    if !is_fallback {
+        if diff_text.len() > max_diff_length || config.diff_reduction_mode == "hunk" {
+            let reduction_info = if config.diff_reduction_mode == "hunk" {
+                format!("applying hunk-level reduction (max {} hunks per file) and ", config.max_hunks_per_file)
+            } else {
+                "".to_string()
+            };
+            info!(
+                "Diff is {} bytes, {}applying smart truncation to {} bytes...",
+                diff_text.len(),
+                reduction_info,
+                max_diff_length
+            );
+            diff_text = process_and_truncate_diff(
+                &diff_text,
+                max_diff_length,
+                &config.diff_reduction_mode,
+                config.max_hunks_per_file,
+            );
+        }
     }
+
+    // 3. Build tree view of staged files if enabled
+    let mut tree_view = String::new();
+    if config.enable_tree_view {
+        let staged = if is_fallback {
+            diff_text.clone()
+        } else {
+            get_staged_files().unwrap_or_default()
+        };
+        if !staged.trim().is_empty() {
+            tree_view = crate::git::build_tree_view(&staged);
+        }
+    }
+
+    // Combine tree view and processed diff into final payload
+    let payload = if !tree_view.is_empty() {
+        if is_fallback {
+            format!("[STAGED FILES TREE]\n{}", tree_view)
+        } else {
+            format!("[STAGED FILES TREE]\n{}\n[INPUT DIFF]\n{}", tree_view, diff_text)
+        }
+    } else {
+        diff_text
+    };
 
     info!("AI is analyzing your changes...");
 
-    // 3. Initialize the AI summarizer based on the active provider (e.g., Gemini, Ollama)
+    // 4. Initialize the AI summarizer based on the active provider (e.g., Gemini, Ollama)
     let summarizer = get_summarizer(config)
         .await
         .context("Failed to get summarizer")?;
 
-    // 4. Request the AI to generate a commit message based on the diff
-    match summarizer.summarize(&diff_text).await {
+    // 5. Request the AI to generate a commit message based on the payload
+    match summarizer.summarize(&payload).await {
         Ok(final_msg) => {
             println!("{}", final_msg);
 
@@ -325,7 +360,7 @@ mod tests {
 
         tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.unwrap();
-            let mut buf = [0; 2048];
+            let mut buf = [0; 32768];
             let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf)
                 .await
                 .unwrap();
@@ -346,6 +381,88 @@ mod tests {
             [general]
             active_provider = "ollama"
             max_diff_length = 1000
+            [ai_params]
+            num_predict = 100
+            temperature = 0.7
+            top_p = 1.0
+            [ollama]
+            model = "llama3"
+            url = "{}"
+            "#,
+            url
+        )
+        .unwrap();
+
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(repo_path).unwrap();
+
+        let args = vec!["asum".to_string()];
+        let result = run_app(args).await;
+
+        std::env::set_current_dir(original_dir).unwrap();
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_run_app_with_tree_view_and_hunk_reduction() {
+        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let repo_path = dir.path();
+
+        // Init git
+        std::process::Command::new("git")
+            .arg("init")
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        // Create a file and stage it
+        let test_file = repo_path.join("test.rs");
+        std::fs::write(&test_file, "fn main() {\n// line 1\n// line 2\n}").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "test.rs"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        // Mock server
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let url = format!("http://{}", addr);
+
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0; 32768];
+            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf)
+                .await
+                .unwrap();
+
+            let request_str = String::from_utf8_lossy(&buf);
+            // Verify that the tree view and input diff header are present in the payload
+            assert!(request_str.contains("[STAGED FILES TREE]"));
+            assert!(request_str.contains("test.rs (Added)"));
+            assert!(request_str.contains("[INPUT DIFF]"));
+
+            let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"message\": {\"content\": \"feat: integration success\"}}";
+            tokio::io::AsyncWriteExt::write_all(&mut socket, response.as_bytes())
+                .await
+                .unwrap();
+        });
+
+        // Create config pointing to mock server with hunk mode enabled
+        let config_path = repo_path.join("asum.toml");
+        let mut file = std::fs::File::create(config_path).unwrap();
+        use std::io::Write;
+        writeln!(
+            file,
+            r#"
+            [general]
+            active_provider = "ollama"
+            max_diff_length = 1000
+            enable_tree_view = true
+            diff_reduction_mode = "hunk"
+            max_hunks_per_file = 1
             [ai_params]
             num_predict = 100
             temperature = 0.7
@@ -493,7 +610,7 @@ mod tests {
 
         tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.unwrap();
-            let mut buf = [0; 2048];
+            let mut buf = [0; 32768];
             let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf)
                 .await
                 .unwrap();

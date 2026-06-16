@@ -49,6 +49,21 @@ impl VertexAIProvider {
 
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
+
+    /// Builds the request URL for Vertex AI API.
+    fn build_url(&self, project_id: &str, location: &str) -> String {
+        self.config.api_url.clone().unwrap_or_else(|| {
+            let host = if location == "global" {
+                "aiplatform.googleapis.com".to_string()
+            } else {
+                format!("{}-aiplatform.googleapis.com", location)
+            };
+            format!(
+                "https://{}/v1/projects/{}/locations/{}/publishers/google/models/{}:generateContent",
+                host, project_id, location, self.config.model
+            )
+        })
+    }
 }
 
 #[async_trait]
@@ -68,12 +83,7 @@ impl Summarizer for VertexAIProvider {
 
         let access_token = self.get_access_token()?;
 
-        let base_url = self.config.api_url.clone().unwrap_or_else(|| {
-            format!(
-                "https://{}-aiplatform.googleapis.com/v1/projects/{}/locations/{}/publishers/google/models/{}:generateContent",
-                location, project_id, location, self.config.model
-            )
-        });
+        let base_url = self.build_url(project_id, location);
 
         let prompt = generate_prompt(&self.config.user_prompt, diff);
 
@@ -240,7 +250,7 @@ mod tests {
 
         tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.unwrap();
-            let mut buf = [0; 1024];
+            let mut buf = [0; 32768];
             let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf)
                 .await
                 .unwrap();
@@ -276,7 +286,7 @@ mod tests {
 
         tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.unwrap();
-            let mut buf = [0; 1024];
+            let mut buf = [0; 32768];
             let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf)
                 .await
                 .unwrap();
@@ -307,6 +317,47 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("returned error: 403")
+        );
+    }
+
+    #[test]
+    fn test_vertexai_build_url() {
+        let ai_config_regional = AIConfig {
+            model: "gemini-3.5-flash".to_string(),
+            temperature: 0.7,
+            top_p: 1.0,
+            num_predict: 100,
+            api_url: None,
+            api_key: Some("static_token".to_string()),
+            system_prompt: "sys".to_string(),
+            user_prompt: "user".to_string(),
+            project_id: Some("proj".to_string()),
+            location: Some("us-central1".to_string()),
+        };
+        let provider_regional = VertexAIProvider::new(ai_config_regional);
+        let url_regional = provider_regional.build_url("proj", "us-central1");
+        assert_eq!(
+            url_regional,
+            "https://us-central1-aiplatform.googleapis.com/v1/projects/proj/locations/us-central1/publishers/google/models/gemini-3.5-flash:generateContent"
+        );
+
+        let ai_config_global = AIConfig {
+            model: "gemini-3.5-flash".to_string(),
+            temperature: 0.7,
+            top_p: 1.0,
+            num_predict: 100,
+            api_url: None,
+            api_key: Some("static_token".to_string()),
+            system_prompt: "sys".to_string(),
+            user_prompt: "user".to_string(),
+            project_id: Some("proj".to_string()),
+            location: Some("global".to_string()),
+        };
+        let provider_global = VertexAIProvider::new(ai_config_global);
+        let url_global = provider_global.build_url("proj", "global");
+        assert_eq!(
+            url_global,
+            "https://aiplatform.googleapis.com/v1/projects/proj/locations/global/publishers/google/models/gemini-3.5-flash:generateContent"
         );
     }
 }
