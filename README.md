@@ -47,6 +47,7 @@ sudo cp target/release/asum /usr/local/bin/
 - **Strict Conventional Commits**: Generates standardized headers matching `<type>(<scope>): <description>` and detailed bodies.
 - **Multi-Provider Support**: Integrate with Google Gemini, local Ollama models, OpenAI, or Google Vertex AI.
 - **Intelligent File List Fallback**: If you stage changes that are not source code (e.g. assets, lock files, binary files, or ignored extensions), `asum` automatically falls back to summarizing based on the list of staged filenames so you never get empty diff errors.
+- **Diff Reduction & Tree View**: Formats staged files as a clean directory tree and supports advanced diff reduction/truncation modes (by file or by hunk) to keep large diffs within AI model context limits.
 - **Context-Aware System Prompts**: Employs Few-Shot Prompting and precise system instructions to guarantee high-quality, concise, and structured commit proposals.
 - **Smart Diff Filtering**: Focuses only on relevant source code files, ignoring noise like lock files, large generated assets, or binaries.
 - **Clipboard Integration**: Copies the final message to your system clipboard automatically so you can paste it immediately.
@@ -59,9 +60,9 @@ sudo cp target/release/asum /usr/local/bin/
 
 | Provider | Default Model | Configuration Guide | Use Case |
 | :--- | :--- | :--- | :--- |
-| **Google Gemini** | `gemini-2.0-flash` | [Gemini Setup Guide](./docs/providers/gemini.md) | High quality, low latency, free/pay-as-you-go. |
-| **OpenAI** | `gpt-4o-mini` | [OpenAI Setup Guide](./docs/providers/openai.md) | Industry standard, OpenAI-compatible APIs (LM Studio, vLLM). |
-| **Google Vertex AI** | `gemini-1.5-flash` | [Vertex AI Setup Guide](./docs/providers/vertexai.md) | Enterprise environments, auto-authenticates via `gcloud`. |
+| **Google Gemini** | `gemini-flash-latest` | [Gemini Setup Guide](./docs/providers/gemini.md) | High quality, low latency, free/pay-as-you-go. |
+| **OpenAI** | `gpt-5.1-mini` | [OpenAI Setup Guide](./docs/providers/openai.md) | Industry standard, OpenAI-compatible APIs (LM Studio, vLLM). |
+| **Google Vertex AI** | `gemini-flash-latest` | [Vertex AI Setup Guide](./docs/providers/vertexai.md) | Enterprise environments, auto-authenticates via `gcloud`. |
 | **Ollama** | `qwen2.5-coder:3b` | [Ollama Setup Guide](./docs/providers/ollama.md) | 100% Local, private, and offline execution. |
 
 ---
@@ -82,6 +83,16 @@ asum
 
 `asum` will analyze your staged diff (or file list), output the suggested commit message, and copy it to your system clipboard. Simply press `Cmd+V` (or `Ctrl+V`) to paste it into your `git commit` command.
 
+### CLI Options
+
+The `asum` command supports the following options:
+
+- `asum` — Run the default summarization flow.
+- `asum -v` or `asum --verbose` — Run with verbose logging. This will print the full diff/prompt sent to the AI, and the full JSON response received from the AI, which is useful for debugging.
+- `asum verify` — Verify your `asum.toml` configuration syntax and structure.
+- `asum --help` — Print help information.
+- `asum --version` — Print version information.
+
 ---
 
 ## Configuration
@@ -98,6 +109,14 @@ Customize the AI settings, active provider, templates, and max diff lengths. Use
 [general]
 active_provider = "ollama"  # Options: "gemini", "ollama", "openai", "vertexai"
 max_diff_length = 36000     # Limit diff size sent to AI
+# Optional: List of file extensions to include in git diff
+# git_extensions = ["*.rs", "*.js", "*.ts", "*.py", "*.go"]
+# Optional: Enable tree view of staged files (default: true)
+# enable_tree_view = true
+# Optional: Mode to truncate/reduce the diff if it is too large: "file" (whole files) or "hunk" (top hunks per file) (default: "file")
+# diff_reduction_mode = "file"
+# Optional: Maximum number of hunks per file to send in "hunk" reduction mode (default: 3)
+# max_hunks_per_file = 3
 
 [prompts]
 # Optional: Identity and rules for the AI
@@ -106,13 +125,15 @@ max_diff_length = 36000     # Limit diff size sent to AI
 # user_prompt = "[INPUT DIFF]\n{{diff}}\n\n[OUTPUT]"
 
 [ai_params]
-num_predict = 500
+num_predict = 4096
 temperature = 0.1
 top_p = 0.9
 
 [gemini]
 api_key = "YOUR_GEMINI_API_KEY"
-model = "gemini-2.0-flash"
+model = "gemini-flash-latest"
+# Optional: Override the default URL
+# url = "https://generativelanguage.googleapis.com"
 
 [ollama]
 model = "qwen2.5-coder:3b"
@@ -120,14 +141,18 @@ url = "http://localhost:11434/api/chat"
 
 [openai]
 api_key = "YOUR_OPENAI_API_KEY"
-model = "gpt-4o-mini"
-# url = "https://api.openai.com/v1/chat/completions" # Optional custom url
+model = "gpt-5.1-mini"
+# Optional: Override the default URL
+# url = "https://api.openai.com/v1/chat/completions"
 
 [vertexai]
 project_id = "YOUR_GCP_PROJECT_ID"
-location = "us-central1"
-model = "gemini-1.5-flash"
-# access_token = "ya29..." # Optional static token. If empty, falls back to `gcloud`.
+location = "global"
+model = "gemini-flash-latest"
+# Optional: Static access token. If omitted, assumes `gcloud auth print-access-token` is available.
+# access_token = "ya29..."
+# Optional: Override the default URL
+# url = "https://aiplatform.googleapis.com/v1/projects/YOUR_GCP_PROJECT_ID/locations/global/publishers/google/models/gemini-3.5-flash:generateContent"
 ```
 
 ### Config Verification

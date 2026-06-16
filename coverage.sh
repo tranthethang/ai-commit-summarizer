@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# 1. Dọn dẹp dữ liệu cũ
+# 1. Clean up old coverage data
 rm -rf target/debug/deps/*.gcno target/debug/deps/*.gcda target/*.profraw
 
-# 2. Chạy test với cờ đặc biệt để sinh dữ liệu coverage
+# 2. Run tests with instrumented coverage flags
 export RUSTFLAGS="-Cinstrument-coverage"
 export LLVM_PROFILE_FILE="target/asum-%p-%m.profraw"
 
@@ -19,15 +19,20 @@ if ! command -v grcov &> /dev/null; then
     exit 1
 fi
 
-# 3. Tổng hợp báo cáo HTML vào thư mục ./coverage
+# 3. Generate LCOV and HTML coverage reports in the ./coverage directory
+mkdir -p ./coverage
+grcov target/ -s . --binary-path ./target/debug/ \
+    -t lcov --branch --ignore-not-existing \
+    -o ./coverage/lcov.info
+
 grcov target/ -s . --binary-path ./target/debug/ \
     -t html --branch --ignore-not-existing \
     -o ./coverage/
 
-# 4. Dọn dẹp file .profraw
+# 4. Clean up raw profile data (.profraw)
 rm -f target/*.profraw
 
-# 5. Hiển thị thông báo
-echo "Báo cáo HTML đã được tạo tại: ./coverage/index.html"
+# 5. Display completion message
+echo "HTML report has been generated at: ./coverage/index.html"
 
-# (Tùy chọn) Kiểm tra coverage bằng lcov hoặc công cụ phân tích json nếu cần parse threshold 90%
+# (Optional) Check coverage using lcov or a json parser tool if threshold validation (e.g. 90%) is needed

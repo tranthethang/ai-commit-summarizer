@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# assum installation script
+# asum installation script
 # This script downloads and installs the pre-compiled binary for asum.
 # It supports Linux (x86_64) and macOS (x86_64, aarch64/arm64).
 

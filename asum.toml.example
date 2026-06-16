@@ -17,13 +17,13 @@ max_diff_length = 36000
 # user_prompt = "[INPUT DIFF]\n{{diff}}\n\n[OUTPUT]"
 
 [ai_params]
-num_predict = 500
+num_predict = 4096
 temperature = 0.1
 top_p = 0.9
 
 [gemini]
 api_key = ""
-model = "gemini-2.0-flash"
+model = "gemini-flash-latest"
 # Optional: Override the default URL
 # url = "https://generativelanguage.googleapis.com"
 
@@ -33,14 +33,14 @@ url = "http://localhost:11434/api/chat"
 
 # [openai]
 # api_key = "sk-..."
-# model = "gpt-4o-mini"
+# model = "gpt-5-nano"
 # Optional: Override the default URL
 # url = "https://api.openai.com/v1/chat/completions"
 
 # [vertexai]
 # project_id = "your-gcp-project-id"
 # location = "global"
-# model = "gemini-3.5-flash"
+# model = "gemini-flash-latest"
 # Optional: Static access token. If omitted, assumes `gcloud auth print-access-token` is available.
 # access_token = "ya29..."
 # Optional: Override the default URL

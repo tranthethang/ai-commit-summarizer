@@ -3,7 +3,10 @@
 //! This module implements the `Summarizer` trait using the OpenAI Chat API
 //! (or compatible endpoints) to generate commit messages.
 
-use crate::summarizer::{AIConfig, Summarizer, generate_prompt};
+use crate::summarizer::{
+    AIConfig, Summarizer, build_http_client, clean_ai_response, generate_prompt,
+    log_verbose_prompt, log_verbose_response,
+};
 use anyhow::Context;
 use async_trait::async_trait;
 use reqwest::Client;
@@ -25,7 +28,7 @@ impl OpenAIProvider {
             .unwrap_or_else(|| "https://api.openai.com/v1/chat/completions".to_string());
         Self {
             config,
-            client: Client::new(),
+            client: build_http_client(),
             base_url,
         }
     }
@@ -42,6 +45,10 @@ impl Summarizer for OpenAIProvider {
             .context("OpenAI API key is missing")?;
 
         let prompt = generate_prompt(&self.config.user_prompt, diff);
+
+        if self.config.verbose {
+            log_verbose_prompt(&self.config.system_prompt, &prompt);
+        }
 
         let payload = json!({
             "model": self.config.model,
@@ -77,27 +84,18 @@ impl Summarizer for OpenAIProvider {
             anyhow::bail!("OpenAI API returned error: {} - {}", status, error_text);
         }
 
-        let res_json: serde_json::Value = response.json().await?;
+        let res_text = response.text().await?;
+        if self.config.verbose {
+            log_verbose_response(&res_text);
+        }
+        let res_json: serde_json::Value = serde_json::from_str(&res_text)?;
 
         let commit_msg = res_json["choices"][0]["message"]["content"]
             .as_str()
             .unwrap_or("")
             .trim();
 
-        let final_msg = commit_msg
-            .lines()
-            .map(|l| l.trim())
-            .filter(|l| {
-                !l.is_empty()
-                    && !l.to_lowercase().contains("diff to analyze")
-                    && !l.to_lowercase().contains("input diff")
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        if final_msg.is_empty() {
-            anyhow::bail!("AI generated an empty or invalid message.");
-        }
+        let final_msg = clean_ai_response(commit_msg)?;
 
         Ok(final_msg)
     }
@@ -121,6 +119,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: None,
             location: None,
+            verbose: false,
         };
         let provider = OpenAIProvider::new(ai_config);
         assert_eq!(provider.config.model, "gpt-4");
@@ -143,6 +142,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: None,
             location: None,
+            verbose: false,
         };
         let provider = OpenAIProvider::new(ai_config);
         let result = provider.summarize("diff").await;
@@ -185,6 +185,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: None,
             location: None,
+            verbose: false,
         };
         let provider = OpenAIProvider::new(ai_config);
         let result = provider.summarize("diff").await.unwrap();
@@ -222,6 +223,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: None,
             location: None,
+            verbose: false,
         };
         let provider = OpenAIProvider::new(ai_config);
         let result = provider.summarize("diff").await;
@@ -264,6 +266,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: None,
             location: None,
+            verbose: false,
         };
         let provider = OpenAIProvider::new(ai_config);
         let result = provider.summarize("diff").await;

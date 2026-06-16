@@ -3,6 +3,7 @@
 //! This module interacts with the Git CLI to retrieve staged changes
 //! and file lists for AI analysis.
 
+use crate::config::DiffReductionMode;
 use std::collections::BTreeMap;
 use std::process::Command;
 
@@ -29,6 +30,11 @@ pub fn get_git_diff_in_path(extensions: &[String], path: &str) -> anyhow::Result
 
     let output = Command::new("git").args(args).current_dir(path).output()?;
 
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git diff failed: {}", stderr.trim());
+    }
+
     let diff_text = String::from_utf8_lossy(&output.stdout).to_string();
     Ok(diff_text)
 }
@@ -52,6 +58,12 @@ pub fn get_staged_files_in_path(path: &str) -> anyhow::Result<String> {
         ":(exclude)*.min.js",
     ];
     let output = Command::new("git").args(args).current_dir(path).output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git diff failed: {}", stderr.trim());
+    }
+
     let files_text = String::from_utf8_lossy(&output.stdout).to_string();
     Ok(files_text)
 }
@@ -92,20 +104,6 @@ fn extract_filename_from_header(header: &str) -> &str {
     header
 }
 
-/// Smartly truncates a git diff to fit within `max_len` characters.
-///
-/// Strategy (Option A - whole-file granularity):
-/// 1. Parse the diff into per-file blocks at `diff --git` boundaries.
-/// 2. Add each block to the output as long as the cumulative length stays within `max_len`.
-/// 3. If a block would exceed the budget, skip it entirely and record the filename as omitted.
-/// 4. If the diff was truncated, append a footer:
-///    `[TRUNCATED: N more file(s) not shown: file_a.rs, file_b.ts]`
-///
-/// If the diff fits entirely within the budget, it is returned unchanged.
-pub fn smart_truncate_diff(diff: &str, max_len: usize) -> String {
-    process_and_truncate_diff(diff, max_len, "file", 0)
-}
-
 #[derive(Debug, Default)]
 struct TreeNode {
     status: Option<String>,
@@ -124,9 +122,15 @@ fn map_status(status_code: &str) -> String {
     }
 }
 
-fn format_tree_node(name: &str, node: &TreeNode, prefix: &str, is_last: bool, is_root: bool) -> String {
+fn format_tree_node(
+    name: &str,
+    node: &TreeNode,
+    prefix: &str,
+    is_last: bool,
+    is_root: bool,
+) -> String {
     let mut result = String::new();
-    
+
     if !is_root {
         result.push_str(prefix);
         if is_last {
@@ -134,7 +138,7 @@ fn format_tree_node(name: &str, node: &TreeNode, prefix: &str, is_last: bool, is
         } else {
             result.push_str("├── ");
         }
-        
+
         if let Some(ref status) = node.status {
             result.push_str(&format!("{} ({})\n", name, status));
         } else {
@@ -143,7 +147,7 @@ fn format_tree_node(name: &str, node: &TreeNode, prefix: &str, is_last: bool, is
     } else {
         result.push_str(".\n");
     }
-    
+
     let next_prefix = if is_root {
         "".to_string()
     } else if is_last {
@@ -151,20 +155,26 @@ fn format_tree_node(name: &str, node: &TreeNode, prefix: &str, is_last: bool, is
     } else {
         format!("{}│   ", prefix)
     };
-    
+
     let child_count = node.children.len();
     for (i, (child_name, child_node)) in node.children.iter().enumerate() {
         let child_is_last = i == child_count - 1;
-        result.push_str(&format_tree_node(child_name, child_node, &next_prefix, child_is_last, false));
+        result.push_str(&format_tree_node(
+            child_name,
+            child_node,
+            &next_prefix,
+            child_is_last,
+            false,
+        ));
     }
-    
+
     result
 }
 
 /// Parses a staged files `--name-status` list and constructs a formatted tree view.
 pub fn build_tree_view(staged_output: &str) -> String {
     let mut root = TreeNode::default();
-    
+
     for line in staged_output.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -174,7 +184,7 @@ pub fn build_tree_view(staged_output: &str) -> String {
         if parts.is_empty() {
             continue;
         }
-        
+
         let status_code = parts[0];
         let (status_desc, path) = if status_code.starts_with('R') && parts.len() >= 3 {
             (format!("Renamed from {}", parts[1]), parts[2])
@@ -185,26 +195,30 @@ pub fn build_tree_view(staged_output: &str) -> String {
         } else {
             continue;
         };
-        
+
         let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
         let mut current = &mut root;
         for (i, &segment) in segments.iter().enumerate() {
             let is_last = i == segments.len() - 1;
             if is_last {
-                current.children.entry(segment.to_string())
+                current
+                    .children
+                    .entry(segment.to_string())
                     .or_insert_with(TreeNode::default)
                     .status = Some(status_desc.clone());
             } else {
-                current = current.children.entry(segment.to_string())
+                current = current
+                    .children
+                    .entry(segment.to_string())
                     .or_insert_with(TreeNode::default);
             }
         }
     }
-    
+
     if root.children.is_empty() {
         return String::new();
     }
-    
+
     format_tree_node(".", &root, "", true, true)
 }
 
@@ -254,7 +268,7 @@ fn truncate_hunks_per_file(file_block: &str, max_hunks: usize) -> String {
         .map(|(idx, (text, affected))| (idx, text, affected))
         .collect();
 
-    indexed_hunks.sort_by(|a, b| b.2.cmp(&a.2));
+    indexed_hunks.sort_by_key(|b| std::cmp::Reverse(b.2));
     indexed_hunks.truncate(max_hunks);
     indexed_hunks.sort_by_key(|h| h.0);
 
@@ -270,7 +284,7 @@ fn truncate_hunks_per_file(file_block: &str, max_hunks: usize) -> String {
 pub fn process_and_truncate_diff(
     diff: &str,
     max_len: usize,
-    mode: &str,
+    mode: DiffReductionMode,
     max_hunks: usize,
 ) -> String {
     if diff.is_empty() {
@@ -278,8 +292,8 @@ pub fn process_and_truncate_diff(
     }
 
     let blocks = split_diff_into_file_blocks(diff);
-    
-    let processed_blocks: Vec<(String, String)> = if mode == "hunk" {
+
+    let processed_blocks: Vec<(String, String)> = if mode == DiffReductionMode::Hunk {
         blocks
             .into_iter()
             .map(|(header, block)| {
@@ -326,14 +340,19 @@ pub fn process_and_truncate_diff(
 #[cfg(test)]
 mod tests {
     use super::extract_filename_from_header;
-    use super::smart_truncate_diff;
     use super::split_diff_into_file_blocks;
     use super::*;
     use std::fs::File;
     use std::io::Write;
     use std::process::Command;
     use tempfile::tempdir;
-
+    fn make_file_block(name: &str, lines: usize) -> String {
+        let mut s = format!("diff --git a/{name} b/{name}\n--- a/{name}\n+++ b/{name}\n");
+        for i in 0..lines {
+            s.push_str(&format!("+line {i}\n"));
+        }
+        s
+    }
     #[test]
     fn test_get_git_diff_no_staged() {
         let dir = tempdir().unwrap();
@@ -459,75 +478,6 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    // ---------- smart_truncate_diff tests ----------
-
-    fn make_file_block(name: &str, lines: usize) -> String {
-        let mut s = format!("diff --git a/{name} b/{name}\n--- a/{name}\n+++ b/{name}\n");
-        for i in 0..lines {
-            s.push_str(&format!("+line {i}\n"));
-        }
-        s
-    }
-
-    #[test]
-    fn test_smart_truncate_diff_fits_entirely() {
-        let diff = make_file_block("main.rs", 5);
-        let result = smart_truncate_diff(&diff, 10_000);
-        assert_eq!(result, diff, "Diff that fits should be returned unchanged");
-    }
-
-    #[test]
-    fn test_smart_truncate_diff_empty() {
-        let result = smart_truncate_diff("", 1000);
-        assert_eq!(result, "");
-    }
-
-    #[test]
-    fn test_smart_truncate_diff_single_file_too_large() {
-        // A single file that exceeds the budget entirely -> only footer emitted.
-        let diff = make_file_block("huge.rs", 100);
-        let result = smart_truncate_diff(&diff, 10);
-        assert!(
-            result.contains("[TRUNCATED:"),
-            "Should contain TRUNCATED footer"
-        );
-        assert!(
-            result.contains("huge.rs"),
-            "Footer should name the omitted file"
-        );
-    }
-
-    #[test]
-    fn test_smart_truncate_diff_multiple_files_partial() {
-        let block_a = make_file_block("alpha.rs", 2);
-        let block_b = make_file_block("beta.ts", 100); // too large
-        let block_c = make_file_block("gamma.go", 100); // also too large
-        let diff = format!("{block_a}{block_b}{block_c}");
-
-        // Budget: just enough for block_a
-        let budget = block_a.len() + 50;
-        let result = smart_truncate_diff(&diff, budget);
-
-        assert!(result.contains("alpha.rs"), "alpha.rs should be included");
-        assert!(!result.contains("+line 0\n+line 1\n") || result.contains("alpha.rs"));
-        assert!(
-            result.contains("[TRUNCATED:"),
-            "Should have TRUNCATED footer"
-        );
-        assert!(
-            result.contains("beta.ts"),
-            "beta.ts should be in omitted list"
-        );
-        assert!(
-            result.contains("gamma.go"),
-            "gamma.go should be in omitted list"
-        );
-        assert!(
-            result.contains("2 more file(s)"),
-            "Footer should count 2 omitted files"
-        );
-    }
-
     #[test]
     fn test_extract_filename_from_header() {
         assert_eq!(
@@ -585,7 +535,7 @@ mod tests {
     fn test_build_tree_view_standard() {
         let input = "M\tsrc/main.rs\nA\tsrc/git.rs\nD\tCargo.toml\n";
         let tree = build_tree_view(input);
-        
+
         let expected = ".\n├── Cargo.toml (Deleted)\n└── src/\n    ├── git.rs (Added)\n    └── main.rs (Modified)\n";
         assert_eq!(tree, expected);
     }
@@ -594,7 +544,7 @@ mod tests {
     fn test_build_tree_view_renamed_and_copied() {
         let input = "R100\told.rs\tnew.rs\nC085\torigin.rs\tcopy.rs\n";
         let tree = build_tree_view(input);
-        
+
         let expected = ".\n├── copy.rs (Copied from origin.rs)\n└── new.rs (Renamed from old.rs)\n";
         assert_eq!(tree, expected);
     }
@@ -605,7 +555,7 @@ mod tests {
                          @@ -1,5 +1,5 @@\n-old1\n+new1\n\
                          @@ -10,10 +10,12 @@\n-old2\n-old22\n+new2\n+new22\n+new23\n\
                          @@ -30,5 +30,5 @@\n-old3\n+new3\n";
-        
+
         // With max_hunks = 1, it should keep only the second hunk (which has 5 affected lines vs 2 in others)
         let truncated = truncate_hunks_per_file(file_diff, 1);
         assert!(truncated.contains("@@ -10,10 +10,12 @@"));
@@ -628,14 +578,22 @@ mod tests {
                          @@ -30,5 +30,5 @@\n-old3\n+new3\n";
 
         // Test hunk reduction mode
-        let result = process_and_truncate_diff(file_diff, 10000, "hunk", 1);
+        let result = process_and_truncate_diff(file_diff, 10000, DiffReductionMode::Hunk, 1);
         assert!(result.contains("@@ -10,10 +10,12 @@"));
         assert!(!result.contains("@@ -1,5 +1,5 @@"));
-        
+
         // Test file reduction mode (which does not do hunk truncation)
-        let result_file = process_and_truncate_diff(file_diff, 10000, "file", 1);
+        let result_file = process_and_truncate_diff(file_diff, 10000, DiffReductionMode::File, 1);
         assert!(result_file.contains("@@ -1,5 +1,5 @@"));
         assert!(result_file.contains("@@ -10,10 +10,12 @@"));
         assert!(result_file.contains("@@ -30,5 +30,5 @@"));
+    }
+
+    #[test]
+    fn test_get_git_diff_not_a_repo() {
+        let dir = tempdir().unwrap();
+        let result = get_git_diff_in_path(&["*.rs".to_string()], dir.path().to_str().unwrap());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("git diff failed"));
     }
 }
