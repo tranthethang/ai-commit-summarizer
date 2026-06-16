@@ -47,8 +47,104 @@ pub fn build_http_client() -> reqwest::Client {
         .expect("Failed to build HTTP client")
 }
 
+type ProviderConfigOutput = (
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    &'static str,
+);
+
 /// Factory function that returns a concrete implementation of a `Summarizer`
 /// based on the configuration's `active_provider`.
+fn build_gemini_config(
+    api_key: &str,
+    model: &str,
+    url: &Option<String>,
+) -> anyhow::Result<ProviderConfigOutput> {
+    if model.is_empty() {
+        anyhow::bail!("Model is required: add [gemini] section with 'model' in asum.toml");
+    }
+    if api_key.is_empty() {
+        anyhow::bail!("API key is required: add 'api_key' to [gemini] section in asum.toml");
+    }
+    Ok((
+        model.to_string(),
+        url.clone(),
+        Some(api_key.to_string()),
+        None,
+        None,
+        "gemini",
+    ))
+}
+
+fn build_ollama_config(model: &str, url: &str) -> anyhow::Result<ProviderConfigOutput> {
+    if model.is_empty() {
+        anyhow::bail!("Model is required: add [ollama] section with 'model' in asum.toml");
+    }
+    if url.is_empty() {
+        anyhow::bail!("URL is required: add 'url' to [ollama] section in asum.toml");
+    }
+    Ok((
+        model.to_string(),
+        Some(url.to_string()),
+        None,
+        None,
+        None,
+        "ollama",
+    ))
+}
+
+fn build_openai_config(
+    api_key: &str,
+    model: &str,
+    url: &Option<String>,
+) -> anyhow::Result<ProviderConfigOutput> {
+    if model.is_empty() {
+        anyhow::bail!("Model is required: add [openai] section with 'model' in asum.toml");
+    }
+    if api_key.is_empty() {
+        anyhow::bail!("API key is required: add 'api_key' to [openai] section in asum.toml");
+    }
+    Ok((
+        model.to_string(),
+        url.clone(),
+        Some(api_key.to_string()),
+        None,
+        None,
+        "openai",
+    ))
+}
+
+fn build_vertexai_config(
+    project_id: &str,
+    location: &str,
+    model: &str,
+    access_token: &Option<String>,
+    url: &Option<String>,
+) -> anyhow::Result<ProviderConfigOutput> {
+    if model.is_empty() {
+        anyhow::bail!("Model is required: add [vertexai] section with 'model' in asum.toml");
+    }
+    if project_id.is_empty() {
+        anyhow::bail!(
+            "Project ID is required: add 'project_id' to [vertexai] section in asum.toml"
+        );
+    }
+    if location.is_empty() {
+        anyhow::bail!("Location is required: add 'location' to [vertexai] section in asum.toml");
+    }
+    Ok((
+        model.to_string(),
+        url.clone(),
+        access_token.clone(),
+        Some(project_id.to_string()),
+        Some(location.to_string()),
+        "vertexai",
+    ))
+}
+
 pub async fn get_summarizer(
     config: AsumConfig,
     verbose: bool,
@@ -58,86 +154,20 @@ pub async fn get_summarizer(
             api_key,
             model,
             url,
-        } => {
-            if model.is_empty() {
-                anyhow::bail!("Model is required: add [gemini] section with 'model' in asum.toml");
-            }
-            if api_key.is_empty() {
-                anyhow::bail!(
-                    "API key is required: add 'api_key' to [gemini] section in asum.toml"
-                );
-            }
-            (
-                model.clone(),
-                url.clone(),
-                Some(api_key.clone()),
-                None,
-                None,
-                "gemini",
-            )
-        }
-        ProviderConfig::Ollama { model, url } => {
-            if model.is_empty() {
-                anyhow::bail!("Model is required: add [ollama] section with 'model' in asum.toml");
-            }
-            if url.is_empty() {
-                anyhow::bail!("URL is required: add 'url' to [ollama] section in asum.toml");
-            }
-            (model.clone(), Some(url.clone()), None, None, None, "ollama")
-        }
+        } => build_gemini_config(api_key, model, url)?,
+        ProviderConfig::Ollama { model, url } => build_ollama_config(model, url)?,
         ProviderConfig::OpenAI {
             api_key,
             model,
             url,
-        } => {
-            if model.is_empty() {
-                anyhow::bail!("Model is required: add [openai] section with 'model' in asum.toml");
-            }
-            if api_key.is_empty() {
-                anyhow::bail!(
-                    "API key is required: add 'api_key' to [openai] section in asum.toml"
-                );
-            }
-            (
-                model.clone(),
-                url.clone(),
-                Some(api_key.clone()),
-                None,
-                None,
-                "openai",
-            )
-        }
+        } => build_openai_config(api_key, model, url)?,
         ProviderConfig::VertexAI {
             project_id,
             location,
             model,
             access_token,
             url,
-        } => {
-            if model.is_empty() {
-                anyhow::bail!(
-                    "Model is required: add [vertexai] section with 'model' in asum.toml"
-                );
-            }
-            if project_id.is_empty() {
-                anyhow::bail!(
-                    "Project ID is required: add 'project_id' to [vertexai] section in asum.toml"
-                );
-            }
-            if location.is_empty() {
-                anyhow::bail!(
-                    "Location is required: add 'location' to [vertexai] section in asum.toml"
-                );
-            }
-            (
-                model.clone(),
-                url.clone(),
-                access_token.clone(),
-                Some(project_id.clone()),
-                Some(location.clone()),
-                "vertexai",
-            )
-        }
+        } => build_vertexai_config(project_id, location, model, access_token, url)?,
     };
 
     let ai_config = AIConfig {
@@ -226,171 +256,75 @@ pub fn log_verbose_response(body: &str) {
     eprintln!("===============================================");
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::config::DiffReductionMode;
-
-    #[test]
-    fn test_generate_prompt_table_driven() {
-        struct TestCase {
-            template: &'static str,
-            diff: &'static str,
-            expected: &'static str,
+/// Helper to construct the Gemini-style JSON payload.
+pub fn build_gemini_payload(
+    system_prompt: &str,
+    user_prompt: &str,
+    config: &AIConfig,
+) -> serde_json::Value {
+    serde_json::json!({
+        "system_instruction": {
+            "parts": [{
+                "text": system_prompt
+            }]
+        },
+        "contents": [{
+            "role": "user",
+            "parts": [{
+                "text": user_prompt
+            }]
+        }],
+        "generationConfig": {
+            "temperature": config.temperature,
+            "topP": config.top_p,
+            "maxOutputTokens": config.num_predict,
         }
+    })
+}
 
-        let cases = vec![
-            TestCase {
-                template: "Changes: {{diff}}",
-                diff: "fix bug",
-                expected: "Changes: fix bug",
-            },
-            TestCase {
-                template: "{{diff}} only",
-                diff: "feat",
-                expected: "feat only",
-            },
-            TestCase {
-                template: "no placeholder",
-                diff: "anything",
-                expected: "no placeholder",
-            },
-        ];
-
-        for case in cases {
-            assert_eq!(generate_prompt(case.template, case.diff), case.expected);
-        }
+/// Helper to check if the response status is successful, returning a detailed error if not.
+pub async fn check_response_status(
+    response: reqwest::Response,
+    provider_name: &str,
+) -> anyhow::Result<reqwest::Response> {
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        anyhow::bail!(
+            "{} returned error: {} - {}",
+            provider_name,
+            status,
+            error_text
+        );
     }
+    Ok(response)
+}
 
-    #[test]
-    fn test_api_key_masking_table_driven() {
-        struct TestCase {
-            key: &'static str,
-            expected: &'static str,
-        }
-
-        let cases = vec![
-            TestCase {
-                key: "",
-                expected: "****",
-            },
-            TestCase {
-                key: "123",
-                expected: "****",
-            },
-            TestCase {
-                key: "12345678",
-                expected: "****",
-            },
-            TestCase {
-                key: "123456789",
-                expected: "1234...6789",
-            },
-            TestCase {
-                key: "abcdefghijkl",
-                expected: "abcd...ijkl",
-            },
-        ];
-
-        for case in cases {
-            let masked = if case.key.len() > 8 {
-                format!("{}...{}", &case.key[..4], &case.key[case.key.len() - 4..])
-            } else {
-                "****".to_string()
-            };
-            assert_eq!(masked, case.expected, "Failed for key: {}", case.key);
-        }
+/// Helper to extract and clean the commit message from a Gemini-style JSON response.
+pub fn parse_gemini_response(res_text: &str, verbose: bool) -> anyhow::Result<String> {
+    if verbose {
+        log_verbose_response(res_text);
     }
+    let res_json: serde_json::Value = serde_json::from_str(res_text)?;
+    let commit_msg = res_json["candidates"][0]["content"]["parts"][0]["text"]
+        .as_str()
+        .unwrap_or("")
+        .trim();
+    clean_ai_response(commit_msg)
+}
 
-    #[tokio::test]
-    async fn test_get_summarizer_ollama() {
-        let config = AsumConfig {
-            provider: ProviderConfig::Ollama {
-                model: "llama3".to_string(),
-                url: "http://localhost:11434".to_string(),
-            },
-            max_diff_length: 1000,
-            git_extensions: vec![],
-            enable_tree_view: true,
-            diff_reduction_mode: DiffReductionMode::File,
-            max_hunks_per_file: 3,
-            system_prompt: "sys".to_string(),
-            user_prompt: "user".to_string(),
-            ai_temperature: 0.7,
-            ai_top_p: 1.0,
-            ai_num_predict: 100,
-        };
-
-        let result = get_summarizer(config, false).await;
-        assert!(result.is_ok());
-        let summarizer = result.unwrap();
-        assert!(summarizer.summarize("test").await.is_err());
+/// Helper to extract and clean the commit message from an OpenAI-style JSON response.
+pub fn parse_openai_response(res_text: &str, verbose: bool) -> anyhow::Result<String> {
+    if verbose {
+        log_verbose_response(res_text);
     }
-
-    #[tokio::test]
-    async fn test_get_summarizer_gemini() {
-        let config = AsumConfig {
-            provider: ProviderConfig::Gemini {
-                api_key: "test_key".to_string(),
-                model: "gemini-pro".to_string(),
-                url: None,
-            },
-            max_diff_length: 1000,
-            git_extensions: vec![],
-            enable_tree_view: true,
-            diff_reduction_mode: DiffReductionMode::File,
-            max_hunks_per_file: 3,
-            system_prompt: "sys".to_string(),
-            user_prompt: "user".to_string(),
-            ai_temperature: 0.7,
-            ai_top_p: 1.0,
-            ai_num_predict: 100,
-        };
-
-        let result = get_summarizer(config, false).await;
-        assert!(result.is_ok());
-        let summarizer = result.unwrap();
-        assert!(summarizer.summarize("test").await.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_get_summarizer_gemini_long_key() {
-        let config = AsumConfig {
-            provider: ProviderConfig::Gemini {
-                api_key: "very_long_api_key_for_testing".to_string(),
-                model: "gemini-pro".to_string(),
-                url: None,
-            },
-            max_diff_length: 1000,
-            git_extensions: vec![],
-            enable_tree_view: true,
-            diff_reduction_mode: DiffReductionMode::File,
-            max_hunks_per_file: 3,
-            system_prompt: "sys".to_string(),
-            user_prompt: "user".to_string(),
-            ai_temperature: 0.7,
-            ai_top_p: 1.0,
-            ai_num_predict: 100,
-        };
-
-        let result = get_summarizer(config, false).await;
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_clean_ai_response() {
-        // Test normal message cleaning
-        let raw = "  fix: some bug  \n\n  Input diff:\n  Result description  ";
-        let cleaned = clean_ai_response(raw).unwrap();
-        assert_eq!(cleaned, "fix: some bug\nResult description");
-
-        // Test filtering "diff to analyze"
-        let raw_diff = "feat: add feature\nDiff to analyze:\nDone";
-        let cleaned_diff = clean_ai_response(raw_diff).unwrap();
-        assert_eq!(cleaned_diff, "feat: add feature\nDone");
-
-        // Test empty/invalid message returns error
-        let raw_empty = "\n\n  Input diff  \n  Diff to analyze  \n";
-        assert!(clean_ai_response(raw_empty).is_err());
-    }
+    let res_json: serde_json::Value = serde_json::from_str(res_text)?;
+    let commit_msg = res_json["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("")
+        .trim();
+    clean_ai_response(commit_msg)
 }

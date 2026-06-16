@@ -44,7 +44,15 @@ Please adhere to the following rules when working on the codebase:
 
 ## Testing
 
-Always run tests to ensure your changes do not break existing functionality. Since some tests check global configuration file operations by modifying environment variables, they must be run sequentially:
+Always run tests to ensure your changes do not break existing functionality. All unit and integration tests are isolated in the `tests/` directory at the project root.
+
+You can run the tests concurrently using:
+
+```bash
+cargo test
+```
+
+If you prefer to run them sequentially, or if you want to isolate environment checks, you can use:
 
 ```bash
 cargo test -- --test-threads=1
