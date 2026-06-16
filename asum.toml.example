@@ -1,47 +1,137 @@
+# ==============================================================================
+# ASUM CONFIGURATION TEMPLATE
+# ==============================================================================
+# This is an example configuration file for the AI Commit Summarizer (asum).
+# Copy this file to `asum.toml` in your project root or home directory (`~/.asum/asum.toml`).
+#
+# Table of Contents:
+# 1. [general]   - Global settings for providers, git diff filters, and reduction
+# 2. [prompts]   - Custom AI instructions and user input prompt templates
+# 3. [ai_params] - Generation parameters (predict token limit, temperature, top_p)
+# 4. [gemini]    - Google Gemini provider settings
+# 5. [ollama]    - Ollama provider settings (Local LLMs)
+# 6. [openai]    - OpenAI provider settings (Optional)
+# 7. [vertexai]  - Google Cloud Vertex AI provider settings (Optional)
+# ==============================================================================
+
+
+# ==============================================================================
+# 1. GENERAL SETTINGS
+# ==============================================================================
 [general]
+# The active AI provider to use.
+# Type: String
+# Options: "gemini", "ollama", "openai", "vertexai"
 active_provider = "ollama"
+
+# The maximum character length of the git diff to process.
+# Type: Integer
 max_diff_length = 36000
-# Optional: List of file extensions to include in git diff
+
+# Optional: List of file glob patterns to filter the git diff.
+# If omitted, defaults to a wide set of common source and configuration files.
+# Type: Array of Strings
 # git_extensions = ["*.rs", "*.js", "*.ts", "*.py", "*.go"]
-# Optional: Enable tree view of staged files (default: true)
+
+# Optional: Prepend a tree view of staged files to the AI prompt context.
+# Type: Boolean (default: true)
 # enable_tree_view = true
-# Optional: Mode to truncate/reduce the diff if it is too large: "file" (whole files) or "hunk" (top hunks per file) (default: "file")
+
+# Optional: The strategy to truncate/reduce the diff if it exceeds `max_diff_length`.
+# Type: String
+# Options: 
+#   - "file": Truncate/exclude whole files from the diff.
+#   - "hunk": Keep only the top hunks per file.
+# Default: "file"
 # diff_reduction_mode = "file"
-# Optional: Maximum number of hunks per file to send in "hunk" reduction mode (default: 3)
+
+# Optional: Maximum number of hunks per file to send in "hunk" reduction mode.
+# Type: Integer (default: 3)
 # max_hunks_per_file = 3
 
+
+# ==============================================================================
+# 2. PROMPT TEMPLATES
+# ==============================================================================
 [prompts]
-# Optional: Identity and rules for the AI
+# Optional: System-level instruction/identity for the AI.
+# If omitted, ASUM uses a built-in prompt designed for Conventional Commits.
+# Type: String
 # system_prompt = "You are an expert Git Commit Generator..."
-# Optional: Template for the user message. Use {{diff}} as placeholder.
+
+# Optional: User-level prompt template. Must contain `{{diff}}` which will be
+# replaced with the actual git diff payload.
+# Type: String
 # user_prompt = "[INPUT DIFF]\n{{diff}}\n\n[OUTPUT]"
 
+
+# ==============================================================================
+# 3. AI GENERATION PARAMETERS
+# ==============================================================================
 [ai_params]
+# Maximum number of tokens to generate/predict in the response.
+# Type: Integer
 num_predict = 4096
+
+# Controls response randomness (0.0 to 1.0). Lower values make outputs more deterministic.
+# Type: Float
 temperature = 0.1
+
+# Nucleus sampling parameter. Limits the token selection to cumulative probability.
+# Type: Float
 top_p = 0.9
 
+
+# ==============================================================================
+# 4. GEMINI PROVIDER
+# ==============================================================================
 [gemini]
+# Google Gemini API Key.
+# Type: String
 api_key = ""
+
+# The Gemini model version to use.
+# Type: String
 model = "gemini-flash-latest"
-# Optional: Override the default URL
+
+# Optional: Custom endpoint URL (e.g. for proxy/regional endpoints).
+# Type: String
 # url = "https://generativelanguage.googleapis.com"
 
+
+# ==============================================================================
+# 5. OLLAMA PROVIDER
+# ==============================================================================
 [ollama]
+# The local Ollama model to use.
+# Type: String
 model = "qwen2.5-coder:3b"
+
+# The local Ollama endpoint URL.
+# Type: String
 url = "http://localhost:11434/api/chat"
 
+
+# ==============================================================================
+# 6. OPENAI PROVIDER (OPTIONAL)
+# ==============================================================================
+# To use OpenAI, uncomment the section and settings below:
 # [openai]
 # api_key = "sk-..."
 # model = "gpt-5.1-mini"
-# Optional: Override the default URL
+# Optional: Override the default OpenAI API URL.
 # url = "https://api.openai.com/v1/chat/completions"
 
+
+# ==============================================================================
+# 7. VERTEX AI PROVIDER (OPTIONAL)
+# ==============================================================================
+# To use Google Cloud Vertex AI, uncomment the section and settings below:
 # [vertexai]
 # project_id = "your-gcp-project-id"
 # location = "global"
 # model = "gemini-flash-latest"
-# Optional: Static access token. If omitted, assumes `gcloud auth print-access-token` is available.
+# Optional: Static access token. If omitted, falls back to running `gcloud auth print-access-token`.
 # access_token = "ya29..."
-# Optional: Override the default URL
+# Optional: Custom endpoint URL.
 # url = "https://aiplatform.googleapis.com/v1/projects/your-gcp-project-id/locations/global/publishers/google/models/gemini-3.5-flash:generateContent"

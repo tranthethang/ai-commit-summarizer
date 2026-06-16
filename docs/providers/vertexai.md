@@ -5,7 +5,7 @@ Google Cloud Vertex AI is an enterprise platform for building machine learning a
 ## Requirements
 
 1. A Google Cloud Platform (GCP) Project with the **Vertex AI API** enabled.
-2. The `gcloud` CLI tool installed and authenticated (`gcloud auth login`).
+2. The `gcloud` CLI tool installed and authenticated (see the [gcloud Setup Guide](../gcloud-setup.md)).
 
 ## Configuration
 
