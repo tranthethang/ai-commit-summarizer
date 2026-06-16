@@ -187,6 +187,10 @@ impl AsumConfig {
     /// Reads and parses a TOML configuration file from the specified path.
     /// Fills in default values for missing optional fields.
     pub fn load_from_toml<P: AsRef<Path>>(path: P) -> Result<Self> {
+        Self::load_from_toml_impl(path.as_ref())
+    }
+
+    fn load_from_toml_impl(path: &Path) -> Result<Self> {
         let content = fs::read_to_string(path)?;
         let toml_config: TomlConfig = toml::from_str(&content)?;
 
@@ -388,6 +392,10 @@ fn verify_vertexai_config(vertex: Option<&VertexAIConfig>) -> Result<()> {
 }
 
 pub fn verify_toml<P: AsRef<Path>>(path: P) -> Result<()> {
+    verify_toml_impl(path.as_ref())
+}
+
+fn verify_toml_impl(path: &Path) -> Result<()> {
     let content = fs::read_to_string(path)?;
     let toml_config: TomlConfig = toml::from_str(&content)?;
 

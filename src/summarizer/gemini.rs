@@ -4,13 +4,12 @@
 //! to generate commit messages.
 
 use crate::summarizer::{
-    AIConfig, Summarizer, build_http_client, clean_ai_response, generate_prompt,
-    log_verbose_prompt, log_verbose_response,
+    AIConfig, Summarizer, build_gemini_payload, build_http_client, check_response_status,
+    generate_prompt, log_verbose_prompt, parse_gemini_response,
 };
 use anyhow::Context;
 use async_trait::async_trait;
 use reqwest::Client;
-use serde_json::json;
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::warn;
@@ -33,14 +32,6 @@ impl GeminiProvider {
             config,
             client: build_http_client(),
             base_url,
-        }
-    }
-
-    pub fn new_with_url(config: AIConfig, url: String) -> Self {
-        Self {
-            config,
-            client: build_http_client(),
-            base_url: url,
         }
     }
 }
@@ -67,6 +58,8 @@ impl Summarizer for GeminiProvider {
             self.base_url, self.config.model
         );
 
+        let payload = build_gemini_payload(&self.config.system_prompt, &prompt, &self.config);
+
         // Implementation of exponential backoff for rate limiting (HTTP 429)
         let mut retries = 0;
         let max_retries = 3;
@@ -77,24 +70,7 @@ impl Summarizer for GeminiProvider {
                 .client
                 .post(&url)
                 .header("x-goog-api-key", api_key)
-                .json(&json!({
-                    "system_instruction": {
-                        "parts": [{
-                            "text": &self.config.system_prompt
-                        }]
-                    },
-                    "contents": [{
-                        "role": "user",
-                        "parts": [{
-                            "text": &prompt
-                        }]
-                    }],
-                    "generationConfig": {
-                        "temperature": self.config.temperature,
-                        "topP": self.config.top_p,
-                        "maxOutputTokens": self.config.num_predict,
-                    }
-                }))
+                .json(&payload)
                 .send()
                 .await?;
 
@@ -109,33 +85,12 @@ impl Summarizer for GeminiProvider {
                 continue;
             }
 
-            if !res.status().is_success() {
-                let status = res.status();
-                let error_text = res
-                    .text()
-                    .await
-                    .unwrap_or_else(|_| "Unknown error".to_string());
-                anyhow::bail!("Gemini API returned error: {} - {}", status, error_text);
-            }
-
+            let res = check_response_status(res, "Gemini API").await?;
             break res;
         };
 
         // Parse the JSON response from Gemini
         let res_text = response.text().await?;
-        if self.config.verbose {
-            log_verbose_response(&res_text);
-        }
-        let res_json: serde_json::Value = serde_json::from_str(&res_text)?;
-
-        // Gemini response structure: candidates[0].content.parts[0].text
-        let commit_msg = res_json["candidates"][0]["content"]["parts"][0]["text"]
-            .as_str()
-            .unwrap_or("")
-            .trim();
-
-        let final_msg = clean_ai_response(commit_msg)?;
-
-        Ok(final_msg)
+        parse_gemini_response(&res_text, self.config.verbose)
     }
 }

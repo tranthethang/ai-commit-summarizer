@@ -4,13 +4,12 @@
 //! (or compatible endpoints) to generate commit messages.
 
 use crate::summarizer::{
-    AIConfig, Summarizer, build_http_client, clean_ai_response, generate_prompt,
-    log_verbose_prompt, log_verbose_response,
+    AIConfig, Summarizer, build_http_client, check_response_status, generate_prompt,
+    log_verbose_prompt, parse_openai_response,
 };
 use anyhow::Context;
 use async_trait::async_trait;
 use reqwest::Client;
-use serde_json::json;
 
 /// Implementation of the `Summarizer` trait using the OpenAI API.
 pub struct OpenAIProvider {
@@ -50,7 +49,7 @@ impl Summarizer for OpenAIProvider {
             log_verbose_prompt(&self.config.system_prompt, &prompt);
         }
 
-        let payload = json!({
+        let payload = serde_json::json!({
             "model": self.config.model,
             "messages": [
                 {
@@ -75,28 +74,9 @@ impl Summarizer for OpenAIProvider {
             .send()
             .await?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-            anyhow::bail!("OpenAI API returned error: {} - {}", status, error_text);
-        }
+        let response = check_response_status(response, "OpenAI API").await?;
 
         let res_text = response.text().await?;
-        if self.config.verbose {
-            log_verbose_response(&res_text);
-        }
-        let res_json: serde_json::Value = serde_json::from_str(&res_text)?;
-
-        let commit_msg = res_json["choices"][0]["message"]["content"]
-            .as_str()
-            .unwrap_or("")
-            .trim();
-
-        let final_msg = clean_ai_response(commit_msg)?;
-
-        Ok(final_msg)
+        parse_openai_response(&res_text, self.config.verbose)
     }
 }

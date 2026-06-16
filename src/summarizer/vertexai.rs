@@ -4,13 +4,12 @@
 //! to generate commit messages.
 
 use crate::summarizer::{
-    AIConfig, Summarizer, build_http_client, clean_ai_response, generate_prompt,
-    log_verbose_prompt, log_verbose_response,
+    AIConfig, Summarizer, build_gemini_payload, build_http_client, check_response_status,
+    generate_prompt, log_verbose_prompt, parse_gemini_response,
 };
 use anyhow::Context;
 use async_trait::async_trait;
 use reqwest::Client;
-use serde_json::json;
 use std::process::Command;
 
 /// Implementation of the `Summarizer` trait using the Vertex AI API.
@@ -95,24 +94,7 @@ impl Summarizer for VertexAIProvider {
         }
 
         // Payload structure is the same as Gemini
-        let payload = json!({
-            "system_instruction": {
-                "parts": [{
-                    "text": &self.config.system_prompt
-                }]
-            },
-            "contents": [{
-                "role": "user",
-                "parts": [{
-                    "text": &prompt
-                }]
-            }],
-            "generationConfig": {
-                "temperature": self.config.temperature,
-                "topP": self.config.top_p,
-                "maxOutputTokens": self.config.num_predict,
-            }
-        });
+        let payload = build_gemini_payload(&self.config.system_prompt, &prompt, &self.config);
 
         let response = self
             .client
@@ -122,28 +104,9 @@ impl Summarizer for VertexAIProvider {
             .send()
             .await?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-            anyhow::bail!("Vertex AI returned error: {} - {}", status, error_text);
-        }
+        let response = check_response_status(response, "Vertex AI").await?;
 
         let res_text = response.text().await?;
-        if self.config.verbose {
-            log_verbose_response(&res_text);
-        }
-        let res_json: serde_json::Value = serde_json::from_str(&res_text)?;
-
-        let commit_msg = res_json["candidates"][0]["content"]["parts"][0]["text"]
-            .as_str()
-            .unwrap_or("")
-            .trim();
-
-        let final_msg = clean_ai_response(commit_msg)?;
-
-        Ok(final_msg)
+        parse_gemini_response(&res_text, self.config.verbose)
     }
 }

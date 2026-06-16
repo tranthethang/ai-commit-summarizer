@@ -5,4 +5,5 @@
 
 pub mod config;
 pub mod git;
+pub mod payload;
 pub mod summarizer;

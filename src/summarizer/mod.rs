@@ -255,3 +255,76 @@ pub fn log_verbose_response(body: &str) {
     }
     eprintln!("===============================================");
 }
+
+/// Helper to construct the Gemini-style JSON payload.
+pub fn build_gemini_payload(
+    system_prompt: &str,
+    user_prompt: &str,
+    config: &AIConfig,
+) -> serde_json::Value {
+    serde_json::json!({
+        "system_instruction": {
+            "parts": [{
+                "text": system_prompt
+            }]
+        },
+        "contents": [{
+            "role": "user",
+            "parts": [{
+                "text": user_prompt
+            }]
+        }],
+        "generationConfig": {
+            "temperature": config.temperature,
+            "topP": config.top_p,
+            "maxOutputTokens": config.num_predict,
+        }
+    })
+}
+
+/// Helper to check if the response status is successful, returning a detailed error if not.
+pub async fn check_response_status(
+    response: reqwest::Response,
+    provider_name: &str,
+) -> anyhow::Result<reqwest::Response> {
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        anyhow::bail!(
+            "{} returned error: {} - {}",
+            provider_name,
+            status,
+            error_text
+        );
+    }
+    Ok(response)
+}
+
+/// Helper to extract and clean the commit message from a Gemini-style JSON response.
+pub fn parse_gemini_response(res_text: &str, verbose: bool) -> anyhow::Result<String> {
+    if verbose {
+        log_verbose_response(res_text);
+    }
+    let res_json: serde_json::Value = serde_json::from_str(res_text)?;
+    let commit_msg = res_json["candidates"][0]["content"]["parts"][0]["text"]
+        .as_str()
+        .unwrap_or("")
+        .trim();
+    clean_ai_response(commit_msg)
+}
+
+/// Helper to extract and clean the commit message from an OpenAI-style JSON response.
+pub fn parse_openai_response(res_text: &str, verbose: bool) -> anyhow::Result<String> {
+    if verbose {
+        log_verbose_response(res_text);
+    }
+    let res_json: serde_json::Value = serde_json::from_str(res_text)?;
+    let commit_msg = res_json["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("")
+        .trim();
+    clean_ai_response(commit_msg)
+}

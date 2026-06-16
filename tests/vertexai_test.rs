@@ -248,3 +248,59 @@ fn test_vertexai_get_access_token_gcloud_fallback_fails() {
 
     assert!(result.is_err());
 }
+
+#[test]
+fn test_vertexai_get_access_token_gcloud_returns_exit_status_1() {
+    let ai_config = AIConfig {
+        model: "gemini-1.5-pro".to_string(),
+        temperature: 0.7,
+        top_p: 1.0,
+        num_predict: 100,
+        api_url: None,
+        api_key: None,
+        system_prompt: "sys".to_string(),
+        user_prompt: "user".to_string(),
+        project_id: None,
+        location: None,
+        verbose: false,
+    };
+    let provider = VertexAIProvider::new(ai_config);
+
+    // Create a temporary directory containing an executable mock gcloud script that returns exit code 1
+    let temp_dir = tempfile::tempdir().unwrap();
+    let gcloud_path = temp_dir.path().join("gcloud");
+
+    // Write shell script that exits with 1
+    std::fs::write(&gcloud_path, "#!/bin/sh\nexit 1\n").unwrap();
+
+    // Make executable
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&gcloud_path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    // Save old PATH
+    let old_path = std::env::var("PATH").unwrap_or_default();
+
+    // Prepend temp_dir to PATH
+    let new_path = format!("{}:{}", temp_dir.path().display(), old_path);
+    unsafe {
+        std::env::set_var("PATH", new_path);
+    }
+
+    let result = provider.get_access_token();
+
+    // Restore PATH
+    unsafe {
+        std::env::set_var("PATH", old_path);
+    }
+
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("gcloud failed to get access token")
+    );
+}

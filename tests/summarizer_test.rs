@@ -313,3 +313,84 @@ async fn test_summarize_with_mock() {
     let result = mock.summarize("fake diff").await.unwrap();
     assert_eq!(result, "feat: mock summary");
 }
+
+#[tokio::test]
+async fn test_check_response_status() {
+    let client = reqwest::Client::new();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let url = format!("http://{}", addr);
+
+    tokio::spawn(async move {
+        if let Ok((mut socket, _)) = listener.accept().await {
+            let response = "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 0\r\n\r\n";
+            let _ = tokio::io::AsyncWriteExt::write_all(&mut socket, response.as_bytes()).await;
+            let _ = tokio::io::AsyncWriteExt::shutdown(&mut socket).await;
+        }
+        if let Ok((mut socket, _)) = listener.accept().await {
+            let response = "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 17\r\nContent-Type: text/plain\r\n\r\nBad Request Error";
+            let _ = tokio::io::AsyncWriteExt::write_all(&mut socket, response.as_bytes()).await;
+            let _ = tokio::io::AsyncWriteExt::shutdown(&mut socket).await;
+        }
+    });
+
+    let res_ok = client.get(&url).send().await.unwrap();
+    let checked_ok = asum::summarizer::check_response_status(res_ok, "TestProvider").await;
+    assert!(checked_ok.is_ok());
+
+    let res_err = client.get(&url).send().await.unwrap();
+    let checked_err = asum::summarizer::check_response_status(res_err, "TestProvider").await;
+    assert!(checked_err.is_err());
+    let err_str = checked_err.unwrap_err().to_string();
+    assert!(
+        err_str.contains("TestProvider returned error: 400")
+            && err_str.contains("Bad Request Error"),
+        "Actual error string did not match expected: {}",
+        err_str
+    );
+}
+
+#[test]
+fn test_parse_gemini_response() {
+    let res_text = r#"{"candidates": [{"content": {"parts": [{"text": "feat: success"}]}}]}"#;
+    let parsed = asum::summarizer::parse_gemini_response(res_text, false).unwrap();
+    assert_eq!(parsed, "feat: success");
+
+    let invalid_json = r#"{"candidates": []}"#;
+    assert!(asum::summarizer::parse_gemini_response(invalid_json, false).is_err());
+}
+
+#[test]
+fn test_parse_openai_response() {
+    let res_text = r#"{"choices": [{"message": {"content": "fix: success"}}]}"#;
+    let parsed = asum::summarizer::parse_openai_response(res_text, false).unwrap();
+    assert_eq!(parsed, "fix: success");
+
+    let invalid_json = r#"{"choices": []}"#;
+    assert!(asum::summarizer::parse_openai_response(invalid_json, false).is_err());
+}
+
+#[test]
+fn test_build_gemini_payload() {
+    use asum::summarizer::AIConfig;
+    let config = AIConfig {
+        model: "gemini".to_string(),
+        temperature: 0.5,
+        top_p: 0.9,
+        num_predict: 50,
+        api_url: None,
+        api_key: None,
+        system_prompt: "sys".to_string(),
+        user_prompt: "user".to_string(),
+        project_id: None,
+        location: None,
+        verbose: false,
+    };
+    let payload = asum::summarizer::build_gemini_payload("sys", "user", &config);
+    assert_eq!(payload["system_instruction"]["parts"][0]["text"], "sys");
+    assert_eq!(payload["contents"][0]["role"], "user");
+    assert_eq!(payload["contents"][0]["parts"][0]["text"], "user");
+    assert_eq!(payload["generationConfig"]["temperature"], 0.5);
+    assert_eq!(payload["generationConfig"]["topP"], 0.9);
+    assert_eq!(payload["generationConfig"]["maxOutputTokens"], 50);
+}
