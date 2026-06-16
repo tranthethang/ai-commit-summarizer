@@ -34,3 +34,7 @@ build_rs_cov.profraw
 
 *.profraw
 coverage/
+
+# SonarQube Scanner
+.scannerwork/
+

@@ -43,6 +43,13 @@ impl Summarizer for OpenAIProvider {
 
         let prompt = generate_prompt(&self.config.user_prompt, diff);
 
+        if self.config.verbose {
+            eprintln!("================ PROMPT ================");
+            eprintln!("*** System Prompt ***\n{}", self.config.system_prompt);
+            eprintln!("*** User Prompt ***\n{}", prompt);
+            eprintln!("========================================");
+        }
+
         let payload = json!({
             "model": self.config.model,
             "messages": [
@@ -77,7 +84,21 @@ impl Summarizer for OpenAIProvider {
             anyhow::bail!("OpenAI API returned error: {} - {}", status, error_text);
         }
 
-        let res_json: serde_json::Value = response.json().await?;
+        let res_text = response.text().await?;
+        if self.config.verbose {
+            eprintln!("================ RESPONSE JSON ================");
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&res_text) {
+                if let Ok(pretty) = serde_json::to_string_pretty(&parsed) {
+                    eprintln!("{}", pretty);
+                } else {
+                    eprintln!("{}", res_text);
+                }
+            } else {
+                eprintln!("{}", res_text);
+            }
+            eprintln!("===============================================");
+        }
+        let res_json: serde_json::Value = serde_json::from_str(&res_text)?;
 
         let commit_msg = res_json["choices"][0]["message"]["content"]
             .as_str()
@@ -121,6 +142,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: None,
             location: None,
+            verbose: false,
         };
         let provider = OpenAIProvider::new(ai_config);
         assert_eq!(provider.config.model, "gpt-4");
@@ -143,6 +165,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: None,
             location: None,
+            verbose: false,
         };
         let provider = OpenAIProvider::new(ai_config);
         let result = provider.summarize("diff").await;
@@ -185,6 +208,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: None,
             location: None,
+            verbose: false,
         };
         let provider = OpenAIProvider::new(ai_config);
         let result = provider.summarize("diff").await.unwrap();
@@ -222,6 +246,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: None,
             location: None,
+            verbose: false,
         };
         let provider = OpenAIProvider::new(ai_config);
         let result = provider.summarize("diff").await;
@@ -264,6 +289,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: None,
             location: None,
+            verbose: false,
         };
         let provider = OpenAIProvider::new(ai_config);
         let result = provider.summarize("diff").await;

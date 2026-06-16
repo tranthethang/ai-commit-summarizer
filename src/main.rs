@@ -50,45 +50,74 @@ async fn main() -> anyhow::Result<()> {
 /// # Arguments
 /// * `args` - A vector of string arguments from the command line.
 pub async fn run_app(args: Vec<String>) -> anyhow::Result<()> {
-    // Handle subcommands if provided
-    if args.len() > 1 {
-        match args[1].as_str() {
-            // Validates the syntax of the local 'asum.toml' file
-            "verify" => {
-                if std::path::Path::new("asum.toml").exists() {
-                    match verify_toml("asum.toml") {
-                        Ok(_) => {
-                            println!("[OK] asum.toml syntax is valid.");
-                            return Ok(());
-                        }
-                        Err(e) => {
-                            error!("asum.toml syntax error: {}", e);
-                            return Err(anyhow::anyhow!("asum.toml syntax error: {}", e));
-                        }
-                    }
-                } else {
-                    error!("asum.toml not found in the current directory.");
-                    return Err(anyhow::anyhow!("asum.toml not found"));
+    let args_slice = &args[1..];
+    let is_help = args_slice
+        .iter()
+        .any(|a| a == "help" || a == "--help" || a == "-h");
+    let is_verify = args_slice.iter().any(|a| a == "verify");
+    let verbose = args_slice
+        .iter()
+        .any(|a| a == "verbose" || a == "--verbose" || a == "-v");
+
+    let mut unknown_args = Vec::new();
+    for arg in args_slice {
+        match arg.as_str() {
+            "help" | "--help" | "-h" | "verify" | "verbose" | "--verbose" | "-v" => {}
+            other => unknown_args.push(other),
+        }
+    }
+
+    if is_help {
+        println!("ASUM - AI Commit Summarizer");
+        println!("\nUsage:");
+        println!("  asum               Generate commit summary from staged changes");
+        println!("  asum verbose       Generate commit summary and print debug/verbose info");
+        println!("  asum verify        Verify the syntax of asum.toml");
+        println!("  asum help          Show this help message");
+        return Ok(());
+    }
+
+    if !unknown_args.is_empty() {
+        error!("Unknown command: {}", unknown_args[0]);
+        println!("\nUsage:");
+        println!("  asum               Generate commit summary from staged changes");
+        println!("  asum verbose       Generate commit summary and print debug/verbose info");
+        println!("  asum verify        Verify the syntax of asum.toml");
+        println!("  asum help          Show this help message");
+        return Err(anyhow::anyhow!("Unknown command"));
+    }
+
+    if is_verify {
+        // Find local config path
+        let local_path = std::path::Path::new("asum.toml");
+        let global_path = home::home_dir().map(|mut p| {
+            p.push(".asum");
+            p.push("asum.toml");
+            p
+        });
+
+        let config_path = if local_path.exists() {
+            Some(local_path.to_path_buf())
+        } else if let Some(ref p) = global_path {
+            if p.exists() { Some(p.clone()) } else { None }
+        } else {
+            None
+        };
+
+        if let Some(path) = config_path {
+            match verify_toml(&path) {
+                Ok(_) => {
+                    println!("[OK] {} syntax is valid.", path.display());
+                    return Ok(());
+                }
+                Err(e) => {
+                    error!("{} syntax error: {}", path.display(), e);
+                    return Err(anyhow::anyhow!("{} syntax error: {}", path.display(), e));
                 }
             }
-            // Displays usage instructions
-            "help" | "--help" | "-h" => {
-                println!("ASUM - AI Commit Summarizer");
-                println!("\nUsage:");
-                println!("  asum         Generate commit summary from staged changes");
-                println!("  asum verify  Verify the syntax of asum.toml");
-                println!("  asum help    Show this help message");
-                return Ok(());
-            }
-            // Handle invalid subcommands
-            _ => {
-                error!("Unknown command: {}", args[1]);
-                println!("\nUsage:");
-                println!("  asum         Generate commit summary from staged changes");
-                println!("  asum verify  Verify the syntax of asum.toml");
-                println!("  asum help    Show this help message");
-                return Err(anyhow::anyhow!("Unknown command"));
-            }
+        } else {
+            error!("Configuration file 'asum.toml' not found locally or in ~/.asum/asum.toml");
+            return Err(anyhow::anyhow!("asum.toml not found"));
         }
     }
 
@@ -116,7 +145,10 @@ pub async fn run_app(args: Vec<String>) -> anyhow::Result<()> {
     if !is_fallback {
         if diff_text.len() > max_diff_length || config.diff_reduction_mode == "hunk" {
             let reduction_info = if config.diff_reduction_mode == "hunk" {
-                format!("applying hunk-level reduction (max {} hunks per file) and ", config.max_hunks_per_file)
+                format!(
+                    "applying hunk-level reduction (max {} hunks per file) and ",
+                    config.max_hunks_per_file
+                )
             } else {
                 "".to_string()
             };
@@ -153,7 +185,10 @@ pub async fn run_app(args: Vec<String>) -> anyhow::Result<()> {
         if is_fallback {
             format!("[STAGED FILES TREE]\n{}", tree_view)
         } else {
-            format!("[STAGED FILES TREE]\n{}\n[INPUT DIFF]\n{}", tree_view, diff_text)
+            format!(
+                "[STAGED FILES TREE]\n{}\n[INPUT DIFF]\n{}",
+                tree_view, diff_text
+            )
         }
     } else {
         diff_text
@@ -162,7 +197,7 @@ pub async fn run_app(args: Vec<String>) -> anyhow::Result<()> {
     info!("AI is analyzing your changes...");
 
     // 4. Initialize the AI summarizer based on the active provider (e.g., Gemini, Ollama)
-    let summarizer = get_summarizer(config)
+    let summarizer = get_summarizer(config, verbose)
         .await
         .context("Failed to get summarizer")?;
 
@@ -247,9 +282,17 @@ mod tests {
         let original_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(dir.path()).unwrap();
 
+        let old_home = env::var("HOME").ok();
+        unsafe { env::set_var("HOME", dir.path()) };
+
         let result = run_app(args).await;
 
-        // Restore original directory
+        // Restore HOME and original directory
+        if let Some(val) = old_home {
+            unsafe { env::set_var("HOME", val) };
+        } else {
+            unsafe { env::remove_var("HOME") };
+        }
         std::env::set_current_dir(original_dir).unwrap();
 
         assert!(result.is_err());
@@ -714,5 +757,50 @@ mod tests {
         std::env::set_current_dir(original_dir).unwrap();
 
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_run_app_verify_global() {
+        let _guard = crate::test_utils::TEST_MUTEX.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+
+        // Create global config in ~/.asum/asum.toml
+        let global_dir = dir.path().join(".asum");
+        std::fs::create_dir_all(&global_dir).unwrap();
+        let config_path = global_dir.join("asum.toml");
+        std::fs::write(
+            &config_path,
+            r#"
+            [general]
+            active_provider = "ollama"
+            max_diff_length = 1000
+            [ai_params]
+            num_predict = 100
+            temperature = 0.7
+            top_p = 1.0
+            "#,
+        )
+        .unwrap();
+
+        // Run verify command while current dir does not have local asum.toml
+        let empty_dir = tempfile::tempdir().unwrap();
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(empty_dir.path()).unwrap();
+
+        let old_home = env::var("HOME").ok();
+        unsafe { env::set_var("HOME", dir.path()) };
+
+        let args = vec!["asum".to_string(), "verify".to_string()];
+        let result = run_app(args).await;
+
+        // Restore
+        if let Some(val) = old_home {
+            unsafe { env::set_var("HOME", val) };
+        } else {
+            unsafe { env::remove_var("HOME") };
+        }
+        std::env::set_current_dir(original_dir).unwrap();
+
+        assert!(result.is_ok());
     }
 }

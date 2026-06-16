@@ -124,9 +124,15 @@ fn map_status(status_code: &str) -> String {
     }
 }
 
-fn format_tree_node(name: &str, node: &TreeNode, prefix: &str, is_last: bool, is_root: bool) -> String {
+fn format_tree_node(
+    name: &str,
+    node: &TreeNode,
+    prefix: &str,
+    is_last: bool,
+    is_root: bool,
+) -> String {
     let mut result = String::new();
-    
+
     if !is_root {
         result.push_str(prefix);
         if is_last {
@@ -134,7 +140,7 @@ fn format_tree_node(name: &str, node: &TreeNode, prefix: &str, is_last: bool, is
         } else {
             result.push_str("├── ");
         }
-        
+
         if let Some(ref status) = node.status {
             result.push_str(&format!("{} ({})\n", name, status));
         } else {
@@ -143,7 +149,7 @@ fn format_tree_node(name: &str, node: &TreeNode, prefix: &str, is_last: bool, is
     } else {
         result.push_str(".\n");
     }
-    
+
     let next_prefix = if is_root {
         "".to_string()
     } else if is_last {
@@ -151,20 +157,26 @@ fn format_tree_node(name: &str, node: &TreeNode, prefix: &str, is_last: bool, is
     } else {
         format!("{}│   ", prefix)
     };
-    
+
     let child_count = node.children.len();
     for (i, (child_name, child_node)) in node.children.iter().enumerate() {
         let child_is_last = i == child_count - 1;
-        result.push_str(&format_tree_node(child_name, child_node, &next_prefix, child_is_last, false));
+        result.push_str(&format_tree_node(
+            child_name,
+            child_node,
+            &next_prefix,
+            child_is_last,
+            false,
+        ));
     }
-    
+
     result
 }
 
 /// Parses a staged files `--name-status` list and constructs a formatted tree view.
 pub fn build_tree_view(staged_output: &str) -> String {
     let mut root = TreeNode::default();
-    
+
     for line in staged_output.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -174,7 +186,7 @@ pub fn build_tree_view(staged_output: &str) -> String {
         if parts.is_empty() {
             continue;
         }
-        
+
         let status_code = parts[0];
         let (status_desc, path) = if status_code.starts_with('R') && parts.len() >= 3 {
             (format!("Renamed from {}", parts[1]), parts[2])
@@ -185,26 +197,30 @@ pub fn build_tree_view(staged_output: &str) -> String {
         } else {
             continue;
         };
-        
+
         let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
         let mut current = &mut root;
         for (i, &segment) in segments.iter().enumerate() {
             let is_last = i == segments.len() - 1;
             if is_last {
-                current.children.entry(segment.to_string())
+                current
+                    .children
+                    .entry(segment.to_string())
                     .or_insert_with(TreeNode::default)
                     .status = Some(status_desc.clone());
             } else {
-                current = current.children.entry(segment.to_string())
+                current = current
+                    .children
+                    .entry(segment.to_string())
                     .or_insert_with(TreeNode::default);
             }
         }
     }
-    
+
     if root.children.is_empty() {
         return String::new();
     }
-    
+
     format_tree_node(".", &root, "", true, true)
 }
 
@@ -278,7 +294,7 @@ pub fn process_and_truncate_diff(
     }
 
     let blocks = split_diff_into_file_blocks(diff);
-    
+
     let processed_blocks: Vec<(String, String)> = if mode == "hunk" {
         blocks
             .into_iter()
@@ -585,7 +601,7 @@ mod tests {
     fn test_build_tree_view_standard() {
         let input = "M\tsrc/main.rs\nA\tsrc/git.rs\nD\tCargo.toml\n";
         let tree = build_tree_view(input);
-        
+
         let expected = ".\n├── Cargo.toml (Deleted)\n└── src/\n    ├── git.rs (Added)\n    └── main.rs (Modified)\n";
         assert_eq!(tree, expected);
     }
@@ -594,7 +610,7 @@ mod tests {
     fn test_build_tree_view_renamed_and_copied() {
         let input = "R100\told.rs\tnew.rs\nC085\torigin.rs\tcopy.rs\n";
         let tree = build_tree_view(input);
-        
+
         let expected = ".\n├── copy.rs (Copied from origin.rs)\n└── new.rs (Renamed from old.rs)\n";
         assert_eq!(tree, expected);
     }
@@ -605,7 +621,7 @@ mod tests {
                          @@ -1,5 +1,5 @@\n-old1\n+new1\n\
                          @@ -10,10 +10,12 @@\n-old2\n-old22\n+new2\n+new22\n+new23\n\
                          @@ -30,5 +30,5 @@\n-old3\n+new3\n";
-        
+
         // With max_hunks = 1, it should keep only the second hunk (which has 5 affected lines vs 2 in others)
         let truncated = truncate_hunks_per_file(file_diff, 1);
         assert!(truncated.contains("@@ -10,10 +10,12 @@"));
@@ -631,7 +647,7 @@ mod tests {
         let result = process_and_truncate_diff(file_diff, 10000, "hunk", 1);
         assert!(result.contains("@@ -10,10 +10,12 @@"));
         assert!(!result.contains("@@ -1,5 +1,5 @@"));
-        
+
         // Test file reduction mode (which does not do hunk truncation)
         let result_file = process_and_truncate_diff(file_diff, 10000, "file", 1);
         assert!(result_file.contains("@@ -1,5 +1,5 @@"));

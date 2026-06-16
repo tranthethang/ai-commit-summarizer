@@ -31,6 +31,13 @@ impl Summarizer for OllamaProvider {
     async fn summarize(&self, diff: &str) -> anyhow::Result<String> {
         let prompt = generate_prompt(&self.config.user_prompt, diff);
 
+        if self.config.verbose {
+            eprintln!("================ PROMPT ================");
+            eprintln!("*** System Prompt ***\n{}", self.config.system_prompt);
+            eprintln!("*** User Prompt ***\n{}", prompt);
+            eprintln!("========================================");
+        }
+
         // Determine the Ollama API endpoint, defaulting to localhost
         let url = self
             .config
@@ -82,7 +89,21 @@ impl Summarizer for OllamaProvider {
         }
 
         // Parse the JSON response from Ollama
-        let res_json: serde_json::Value = response.json().await?;
+        let res_text = response.text().await?;
+        if self.config.verbose {
+            eprintln!("================ RESPONSE JSON ================");
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&res_text) {
+                if let Ok(pretty) = serde_json::to_string_pretty(&parsed) {
+                    eprintln!("{}", pretty);
+                } else {
+                    eprintln!("{}", res_text);
+                }
+            } else {
+                eprintln!("{}", res_text);
+            }
+            eprintln!("===============================================");
+        }
+        let res_json: serde_json::Value = serde_json::from_str(&res_text)?;
 
         // Try to get content from "message.content" (chat API) or "response" (generate API)
         let commit_msg = res_json["message"]["content"]
@@ -131,6 +152,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: None,
             location: None,
+            verbose: false,
         };
         let provider = OllamaProvider::new(ai_config);
         assert_eq!(provider.config.model, "llama3");
@@ -168,6 +190,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: None,
             location: None,
+            verbose: false,
         };
         let provider = OllamaProvider::new(ai_config);
         let result = provider.summarize("diff").await;
@@ -204,6 +227,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: None,
             location: None,
+            verbose: false,
         };
         let provider = OllamaProvider::new(ai_config);
         let result = provider.summarize("diff").await.unwrap();
@@ -241,6 +265,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: None,
             location: None,
+            verbose: false,
         };
         let provider = OllamaProvider::new(ai_config);
         let result = provider.summarize("diff").await.unwrap();

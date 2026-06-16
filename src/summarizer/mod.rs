@@ -26,6 +26,7 @@ pub struct AIConfig {
     pub user_prompt: String,
     pub project_id: Option<String>,
     pub location: Option<String>,
+    pub verbose: bool,
 }
 
 /// Trait defining the behavior of an AI commit summarizer.
@@ -39,7 +40,10 @@ pub trait Summarizer: Send + Sync {
 
 /// Factory function that returns a concrete implementation of a `Summarizer`
 /// based on the configuration's `active_provider`.
-pub async fn get_summarizer(config: AsumConfig) -> anyhow::Result<Box<dyn Summarizer>> {
+pub async fn get_summarizer(
+    config: AsumConfig,
+    verbose: bool,
+) -> anyhow::Result<Box<dyn Summarizer>> {
     let provider = config.active_provider.clone();
 
     let model = match provider.as_str() {
@@ -76,6 +80,7 @@ pub async fn get_summarizer(config: AsumConfig) -> anyhow::Result<Box<dyn Summar
         user_prompt: config.user_prompt.clone(),
         project_id: config.vertex_project_id.clone(),
         location: config.vertex_location.clone(),
+        verbose,
     };
 
     info!("Using provider: {}", provider);
@@ -210,7 +215,7 @@ mod tests {
             vertex_url: None,
         };
 
-        let result = get_summarizer(config).await;
+        let result = get_summarizer(config, false).await;
         assert!(result.is_ok());
         let summarizer = result.unwrap();
         // Since we can't easily downcast Box<dyn Summarizer>, we just check it doesn't error
@@ -247,7 +252,7 @@ mod tests {
             vertex_url: None,
         };
 
-        let result = get_summarizer(config).await;
+        let result = get_summarizer(config, false).await;
         assert!(result.is_ok());
         let summarizer = result.unwrap();
         assert!(summarizer.summarize("test").await.is_err());
@@ -282,7 +287,7 @@ mod tests {
             vertex_url: None,
         };
 
-        let result = get_summarizer(config).await;
+        let result = get_summarizer(config, false).await;
         assert!(result.is_ok());
     }
 
@@ -315,7 +320,7 @@ mod tests {
             vertex_url: None,
         };
 
-        let result = get_summarizer(config).await;
+        let result = get_summarizer(config, false).await;
         assert!(result.is_err());
         match result {
             Err(e) => assert_eq!(e.to_string(), "Unknown provider: unknown"),

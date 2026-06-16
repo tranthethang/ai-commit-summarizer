@@ -87,6 +87,13 @@ impl Summarizer for VertexAIProvider {
 
         let prompt = generate_prompt(&self.config.user_prompt, diff);
 
+        if self.config.verbose {
+            eprintln!("================ PROMPT ================");
+            eprintln!("*** System Prompt ***\n{}", self.config.system_prompt);
+            eprintln!("*** User Prompt ***\n{}", prompt);
+            eprintln!("========================================");
+        }
+
         // Payload structure is the same as Gemini
         let payload = json!({
             "system_instruction": {
@@ -124,7 +131,21 @@ impl Summarizer for VertexAIProvider {
             anyhow::bail!("Vertex AI returned error: {} - {}", status, error_text);
         }
 
-        let res_json: serde_json::Value = response.json().await?;
+        let res_text = response.text().await?;
+        if self.config.verbose {
+            eprintln!("================ RESPONSE JSON ================");
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&res_text) {
+                if let Ok(pretty) = serde_json::to_string_pretty(&parsed) {
+                    eprintln!("{}", pretty);
+                } else {
+                    eprintln!("{}", res_text);
+                }
+            } else {
+                eprintln!("{}", res_text);
+            }
+            eprintln!("===============================================");
+        }
+        let res_json: serde_json::Value = serde_json::from_str(&res_text)?;
 
         let commit_msg = res_json["candidates"][0]["content"]["parts"][0]["text"]
             .as_str()
@@ -168,6 +189,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: Some("my-project".to_string()),
             location: Some("us-central1".to_string()),
+            verbose: false,
         };
         let provider = VertexAIProvider::new(ai_config);
         assert_eq!(provider.config.model, "gemini-1.5-pro");
@@ -186,6 +208,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: None,
             location: None,
+            verbose: false,
         };
         let provider = VertexAIProvider::new(ai_config);
         let token = provider.get_access_token().unwrap();
@@ -205,6 +228,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: None,
             location: Some("us-central1".to_string()),
+            verbose: false,
         };
         let provider = VertexAIProvider::new(ai_config);
         let result = provider.summarize("diff").await;
@@ -230,6 +254,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: Some("proj".to_string()),
             location: None,
+            verbose: false,
         };
         let provider = VertexAIProvider::new(ai_config);
         let result = provider.summarize("diff").await;
@@ -272,6 +297,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: Some("proj".to_string()),
             location: Some("loc".to_string()),
+            verbose: false,
         };
         let provider = VertexAIProvider::new(ai_config);
         let result = provider.summarize("diff").await.unwrap();
@@ -308,6 +334,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: Some("proj".to_string()),
             location: Some("loc".to_string()),
+            verbose: false,
         };
         let provider = VertexAIProvider::new(ai_config);
         let result = provider.summarize("diff").await;
@@ -333,6 +360,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: Some("proj".to_string()),
             location: Some("us-central1".to_string()),
+            verbose: false,
         };
         let provider_regional = VertexAIProvider::new(ai_config_regional);
         let url_regional = provider_regional.build_url("proj", "us-central1");
@@ -352,6 +380,7 @@ mod tests {
             user_prompt: "user".to_string(),
             project_id: Some("proj".to_string()),
             location: Some("global".to_string()),
+            verbose: false,
         };
         let provider_global = VertexAIProvider::new(ai_config_global);
         let url_global = provider_global.build_url("proj", "global");
