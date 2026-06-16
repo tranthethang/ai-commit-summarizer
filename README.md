@@ -62,7 +62,7 @@ sudo cp target/release/asum /usr/local/bin/
 | :--- | :--- | :--- | :--- |
 | **Google Gemini** | `gemini-flash-latest` | [Gemini Setup Guide](./docs/providers/gemini.md) | High quality, low latency, free/pay-as-you-go. |
 | **OpenAI** | `gpt-5.1-mini` | [OpenAI Setup Guide](./docs/providers/openai.md) | Industry standard, OpenAI-compatible APIs (LM Studio, vLLM). |
-| **Google Vertex AI** | `gemini-flash-latest` | [Vertex AI Setup Guide](./docs/providers/vertexai.md) | Enterprise environments, auto-authenticates via `gcloud`. |
+| **Google Vertex AI** | `gemini-flash-latest` | [Vertex AI Setup Guide](./docs/providers/vertexai.md) &middot; [gcloud Install Guide](./docs/gcloud-setup.md) | Enterprise environments, auto-authenticates via `gcloud`. |
 | **Ollama** | `qwen2.5-coder:3b` | [Ollama Setup Guide](./docs/providers/ollama.md) | 100% Local, private, and offline execution. |
 
 ---
