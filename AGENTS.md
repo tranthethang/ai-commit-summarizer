@@ -36,8 +36,8 @@ Follow standard Rust naming conventions (RFC 430):
 - **Smart Pointers**: Use `Rc`, `Arc`, `RefCell`, `Mutex`, and `Box` only when necessary for shared ownership, interior mutability, or dynamic dispatch.
 
 ### Testing
-- **Unit Tests**: Put unit tests in a `tests` module at the bottom of the same file using `#[cfg(test)]`.
-- **Integration Tests**: Place integration tests in the `tests/` directory at the project root.
+- **NO TESTS IN SRC**: NEVER write unit tests or integration tests (including `#[cfg(test)] mod tests`) inside any business logic files under the `./src` directory.
+- **Isolated Testing**: Place both Unit and Integration tests exclusively in the `tests/` directory at the project root to keep the source directory clean.
 - **Test Names**: Test function names should clearly describe the behavior being tested (e.g., `test_config_loading_fails_with_invalid_file`).
 
 ## Commenting Guidelines

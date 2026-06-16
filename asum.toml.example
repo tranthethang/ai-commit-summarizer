@@ -33,7 +33,7 @@ url = "http://localhost:11434/api/chat"
 
 # [openai]
 # api_key = "sk-..."
-# model = "gpt-5-nano"
+# model = "gpt-5.1-mini"
 # Optional: Override the default URL
 # url = "https://api.openai.com/v1/chat/completions"
 
