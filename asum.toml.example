@@ -13,6 +13,8 @@
 # 6. [openai]    - OpenAI provider settings (Optional)
 # 7. [vertexai]  - Google Cloud Vertex AI provider settings (Optional)
 # 8. [groq]      - Groq AI provider settings (Optional)
+# 9. [mistral]   - Mistral AI provider settings (Optional)
+# 10. [github]   - GitHub Models provider settings (Optional)
 # ==============================================================================
 
 
@@ -22,7 +24,7 @@
 [general]
 # The active AI provider to use.
 # Type: String
-# Options: "gemini", "ollama", "openai", "vertexai", "groq", "mistral"
+# Options: "gemini", "ollama", "openai", "vertexai", "groq", "mistral", "github"
 active_provider = "groq"
 
 # The maximum character length of the git diff to process.
@@ -158,3 +160,15 @@ url = "http://localhost:11434/api/chat"
 # model = "mistral-small-latest"
 # Optional: Override the default Mistral API URL.
 # url = "https://api.mistral.ai/v1/chat/completions"
+
+
+# ==============================================================================
+# 10. GITHUB MODELS PROVIDER (OPTIONAL)
+# ==============================================================================
+# To use GitHub Models, uncomment the section and settings below:
+# [github]
+# api_key = "your-github-pat"
+# model = "gpt-4o-mini"
+# Optional: Override the default GitHub Models API URL.
+# url = "https://models.github.ai/inference/chat/completions"
+

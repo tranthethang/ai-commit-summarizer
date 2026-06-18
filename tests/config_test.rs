@@ -166,6 +166,30 @@ fn test_load_from_toml_missing_provider_sections() {
             .to_string()
             .contains("Missing [mistral]")
     );
+
+    let mut file7 = NamedTempFile::new().unwrap();
+    writeln!(
+        file7,
+        r#"
+        [general]
+        active_provider = "github"
+        max_diff_length = 1000
+
+        [ai_params]
+        num_predict = 100
+        temperature = 0.5
+        top_p = 0.9
+        "#
+    )
+    .unwrap();
+    let result7 = AsumConfig::load_from_toml(file7.path());
+    assert!(result7.is_err());
+    assert!(
+        result7
+            .unwrap_err()
+            .to_string()
+            .contains("Missing [github]")
+    );
 }
 
 #[test]
@@ -531,6 +555,54 @@ fn test_verify_toml_table_driven() {
                 [mistral]
                 api_key = ""
                 model = "mistral-small-latest"
+            "#,
+            is_ok: false,
+        },
+        TestCase {
+            name: "valid full config github",
+            content: r#"
+                [general]
+                active_provider = "github"
+                max_diff_length = 2000
+                [ai_params]
+                num_predict = 50
+                temperature = 0.7
+                top_p = 1.0
+                [github]
+                model = "gpt-4o-mini"
+                api_key = "ghp_123"
+            "#,
+            is_ok: true,
+        },
+        TestCase {
+            name: "invalid config github missing model",
+            content: r#"
+                [general]
+                active_provider = "github"
+                max_diff_length = 2000
+                [ai_params]
+                num_predict = 50
+                temperature = 0.7
+                top_p = 1.0
+                [github]
+                api_key = "ghp_123"
+                model = ""
+            "#,
+            is_ok: false,
+        },
+        TestCase {
+            name: "invalid config github missing api_key",
+            content: r#"
+                [general]
+                active_provider = "github"
+                max_diff_length = 2000
+                [ai_params]
+                num_predict = 50
+                temperature = 0.7
+                top_p = 1.0
+                [github]
+                api_key = ""
+                model = "gpt-4o-mini"
             "#,
             is_ok: false,
         },

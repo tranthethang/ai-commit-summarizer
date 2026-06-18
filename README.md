@@ -45,7 +45,7 @@ sudo cp target/release/asum /usr/local/bin/
 ## Features
 
 - **Strict Conventional Commits**: Generates standardized headers matching `<type>(<scope>): <description>` and detailed bodies.
-- **Multi-Provider Support**: Integrate with Google Gemini, OpenAI, Google Vertex AI, Ollama, Groq, or Mistral AI.
+- **Multi-Provider Support**: Integrate with Google Gemini, OpenAI, Google Vertex AI, Ollama, Groq, Mistral AI, or GitHub Models.
 - **Intelligent File List Fallback**: If you stage changes that are not source code (e.g. assets, lock files, binary files, or ignored extensions), `asum` automatically falls back to summarizing based on the list of staged filenames so you never get empty diff errors.
 - **Diff Reduction & Tree View**: Formats staged files as a clean directory tree and supports advanced diff reduction/truncation modes (by file or by hunk) to keep large diffs within AI model context limits.
 - **Context-Aware System Prompts**: Employs Few-Shot Prompting and precise system instructions to guarantee high-quality, concise, and structured commit proposals.
@@ -66,6 +66,7 @@ sudo cp target/release/asum /usr/local/bin/
 | **Ollama** | `qwen2.5-coder:3b` | [Ollama Setup Guide](./docs/providers/ollama.md) | 100% Local, private, and offline execution. |
 | **Groq** | `llama-3.3-70b-versatile` | [Groq Setup Guide](./docs/providers/groq.md) | Blazing-fast LPU inference for open models. |
 | **Mistral AI** | `mistral-small-latest` | [Mistral AI Setup Guide](./docs/providers/mistral.md) | Powerful open-weights and commercial French LLMs. |
+| **GitHub Models** | `gpt-4o-mini` | [GitHub Models Setup Guide](./docs/providers/github.md) | Access to 40+ models via GitHub PAT authentication. |
 
 ---
 

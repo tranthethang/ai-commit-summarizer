@@ -27,6 +27,8 @@ pub enum Provider {
     Groq,
     #[serde(rename = "mistral")]
     Mistral,
+    #[serde(rename = "github")]
+    Github,
 }
 
 /// Modes for reducing diff length when it exceeds limits.
@@ -68,6 +70,11 @@ pub enum ProviderConfig {
         url: Option<String>,
     },
     Mistral {
+        api_key: String,
+        model: String,
+        url: Option<String>,
+    },
+    Github {
         api_key: String,
         model: String,
         url: Option<String>,

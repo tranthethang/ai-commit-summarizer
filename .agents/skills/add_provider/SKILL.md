@@ -49,12 +49,13 @@ Strictly follow the 5 steps in [adding-providers.md](file:///Users/thangtt/Docum
 - Update config tests in `tests/config_test.rs`.
 - Run formatting and analysis:
   ```bash
-  cargo fmt
-  cargo clippy --all-targets
-  cargo test
+  make format
+  make test
   ```
 
 ### 5. Finalize Documentation
 - Write all comments, documentation, and config guides in English only.
 - Do not use emojis in any Markdown files.
+- Create a dedicated provider setup guide in `./docs/providers/[provider_name].md` explaining prerequisites, recommended model, and specific configuration options.
+- Update the **Supported Providers** table and features list in [README.md](file:///Users/thangtt/Documents/Github/ai-commit-summarizer/README.md) to include the new provider.
 - Document configuration settings in [asum.toml](file:///Users/thangtt/Documents/Github/ai-commit-summarizer/asum.toml) and [asum.toml.example](file:///Users/thangtt/Documents/Github/ai-commit-summarizer/asum.toml.example).

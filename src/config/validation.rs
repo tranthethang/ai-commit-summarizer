@@ -1,6 +1,7 @@
 use crate::config::Provider;
 use crate::config::parser::{
-    GeminiConfig, GroqConfig, MistralConfig, OllamaConfig, OpenAIConfig, TomlConfig, VertexAIConfig,
+    GeminiConfig, GithubConfig, GroqConfig, MistralConfig, OllamaConfig, OpenAIConfig, TomlConfig,
+    VertexAIConfig,
 };
 use anyhow::Result;
 use std::fs;
@@ -87,6 +88,19 @@ fn verify_mistral_config(mistral: Option<&MistralConfig>) -> Result<()> {
     Ok(())
 }
 
+fn verify_github_config(github: Option<&GithubConfig>) -> Result<()> {
+    let config = github.ok_or_else(|| {
+        anyhow::anyhow!("[github] section is required when active_provider = \"github\"")
+    })?;
+    if config.model.is_empty() {
+        anyhow::bail!("model in [github] section cannot be empty");
+    }
+    if config.api_key.is_empty() {
+        anyhow::bail!("api_key in [github] section cannot be empty");
+    }
+    Ok(())
+}
+
 pub fn verify_toml<P: AsRef<Path>>(path: P) -> Result<()> {
     verify_toml_impl(path.as_ref())
 }
@@ -102,5 +116,6 @@ fn verify_toml_impl(path: &Path) -> Result<()> {
         Provider::VertexAI => verify_vertexai_config(toml_config.vertexai.as_ref()),
         Provider::Groq => verify_groq_config(toml_config.groq.as_ref()),
         Provider::Mistral => verify_mistral_config(toml_config.mistral.as_ref()),
+        Provider::Github => verify_github_config(toml_config.github.as_ref()),
     }
 }

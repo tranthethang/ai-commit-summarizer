@@ -4,6 +4,7 @@
 //! for various AI providers like Gemini and Ollama.
 
 pub mod gemini;
+pub mod github;
 pub mod groq;
 pub mod helpers;
 pub mod mistral;
@@ -187,6 +188,27 @@ fn build_mistral_config(
     ))
 }
 
+fn build_github_config(
+    api_key: &str,
+    model: &str,
+    url: &Option<String>,
+) -> anyhow::Result<ProviderConfigOutput> {
+    if model.is_empty() {
+        anyhow::bail!("Model is required: add [github] section with 'model' in asum.toml");
+    }
+    if api_key.is_empty() {
+        anyhow::bail!("API key is required: add 'api_key' to [github] section in asum.toml");
+    }
+    Ok((
+        model.to_string(),
+        url.clone(),
+        Some(api_key.to_string()),
+        None,
+        None,
+        "github",
+    ))
+}
+
 pub async fn get_summarizer(
     config: AsumConfig,
     verbose: bool,
@@ -220,6 +242,11 @@ pub async fn get_summarizer(
             model,
             url,
         } => build_mistral_config(api_key, model, url)?,
+        ProviderConfig::Github {
+            api_key,
+            model,
+            url,
+        } => build_github_config(api_key, model, url)?,
     };
 
     let ai_config = AIConfig {
@@ -256,6 +283,7 @@ pub async fn get_summarizer(
         }
         "groq" => Ok(Box::new(groq::GroqProvider::new(ai_config)) as Box<dyn Summarizer>),
         "mistral" => Ok(Box::new(mistral::MistralProvider::new(ai_config)) as Box<dyn Summarizer>),
+        "github" => Ok(Box::new(github::GithubProvider::new(ai_config)) as Box<dyn Summarizer>),
         _ => Err(anyhow::anyhow!("Unknown provider: {}", provider_name)),
     }
 }
