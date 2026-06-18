@@ -22,7 +22,7 @@
 [general]
 # The active AI provider to use.
 # Type: String
-# Options: "gemini", "ollama", "openai", "vertexai", "groq"
+# Options: "gemini", "ollama", "openai", "vertexai", "groq", "mistral"
 active_provider = "groq"
 
 # The maximum character length of the git diff to process.
@@ -147,3 +147,14 @@ url = "http://localhost:11434/api/chat"
 # model = "llama-3.3-70b-versatile"
 # Optional: Override the default Groq API URL.
 # url = "https://api.groq.com/openai/v1/chat/completions"
+
+
+# ==============================================================================
+# 9. MISTRAL AI PROVIDER (OPTIONAL)
+# ==============================================================================
+# To use Mistral AI, uncomment the section and settings below:
+# [mistral]
+# api_key = "your-mistral-api-key"
+# model = "mistral-small-latest"
+# Optional: Override the default Mistral API URL.
+# url = "https://api.mistral.ai/v1/chat/completions"

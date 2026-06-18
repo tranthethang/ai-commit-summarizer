@@ -25,6 +25,8 @@ pub enum Provider {
     VertexAI,
     #[serde(rename = "groq")]
     Groq,
+    #[serde(rename = "mistral")]
+    Mistral,
 }
 
 /// Modes for reducing diff length when it exceeds limits.
@@ -61,6 +63,11 @@ pub enum ProviderConfig {
         url: Option<String>,
     },
     Groq {
+        api_key: String,
+        model: String,
+        url: Option<String>,
+    },
+    Mistral {
         api_key: String,
         model: String,
         url: Option<String>,

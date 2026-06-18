@@ -1,6 +1,6 @@
 use crate::config::Provider;
 use crate::config::parser::{
-    GeminiConfig, GroqConfig, OllamaConfig, OpenAIConfig, TomlConfig, VertexAIConfig,
+    GeminiConfig, GroqConfig, MistralConfig, OllamaConfig, OpenAIConfig, TomlConfig, VertexAIConfig,
 };
 use anyhow::Result;
 use std::fs;
@@ -74,6 +74,19 @@ fn verify_groq_config(groq: Option<&GroqConfig>) -> Result<()> {
     Ok(())
 }
 
+fn verify_mistral_config(mistral: Option<&MistralConfig>) -> Result<()> {
+    let config = mistral.ok_or_else(|| {
+        anyhow::anyhow!("[mistral] section is required when active_provider = \"mistral\"")
+    })?;
+    if config.model.is_empty() {
+        anyhow::bail!("model in [mistral] section cannot be empty");
+    }
+    if config.api_key.is_empty() {
+        anyhow::bail!("api_key in [mistral] section cannot be empty");
+    }
+    Ok(())
+}
+
 pub fn verify_toml<P: AsRef<Path>>(path: P) -> Result<()> {
     verify_toml_impl(path.as_ref())
 }
@@ -88,5 +101,6 @@ fn verify_toml_impl(path: &Path) -> Result<()> {
         Provider::OpenAI => verify_openai_config(toml_config.openai.as_ref()),
         Provider::VertexAI => verify_vertexai_config(toml_config.vertexai.as_ref()),
         Provider::Groq => verify_groq_config(toml_config.groq.as_ref()),
+        Provider::Mistral => verify_mistral_config(toml_config.mistral.as_ref()),
     }
 }

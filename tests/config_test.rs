@@ -142,6 +142,30 @@ fn test_load_from_toml_missing_provider_sections() {
     let result5 = AsumConfig::load_from_toml(file5.path());
     assert!(result5.is_err());
     assert!(result5.unwrap_err().to_string().contains("Missing [groq]"));
+
+    let mut file6 = NamedTempFile::new().unwrap();
+    writeln!(
+        file6,
+        r#"
+        [general]
+        active_provider = "mistral"
+        max_diff_length = 1000
+
+        [ai_params]
+        num_predict = 100
+        temperature = 0.5
+        top_p = 0.9
+        "#
+    )
+    .unwrap();
+    let result6 = AsumConfig::load_from_toml(file6.path());
+    assert!(result6.is_err());
+    assert!(
+        result6
+            .unwrap_err()
+            .to_string()
+            .contains("Missing [mistral]")
+    );
 }
 
 #[test]
@@ -459,6 +483,54 @@ fn test_verify_toml_table_driven() {
                 [groq]
                 api_key = ""
                 model = "llama-3.3-70b-versatile"
+            "#,
+            is_ok: false,
+        },
+        TestCase {
+            name: "valid config mistral",
+            content: r#"
+                [general]
+                active_provider = "mistral"
+                max_diff_length = 2000
+                [ai_params]
+                num_predict = 50
+                temperature = 0.7
+                top_p = 1.0
+                [mistral]
+                model = "mistral-small-latest"
+                api_key = "mistral_key_123"
+            "#,
+            is_ok: true,
+        },
+        TestCase {
+            name: "invalid config mistral missing model",
+            content: r#"
+                [general]
+                active_provider = "mistral"
+                max_diff_length = 2000
+                [ai_params]
+                num_predict = 50
+                temperature = 0.7
+                top_p = 1.0
+                [mistral]
+                api_key = "mistral_key_123"
+                model = ""
+            "#,
+            is_ok: false,
+        },
+        TestCase {
+            name: "invalid config mistral missing api_key",
+            content: r#"
+                [general]
+                active_provider = "mistral"
+                max_diff_length = 2000
+                [ai_params]
+                num_predict = 50
+                temperature = 0.7
+                top_p = 1.0
+                [mistral]
+                api_key = ""
+                model = "mistral-small-latest"
             "#,
             is_ok: false,
         },

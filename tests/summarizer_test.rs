@@ -247,6 +247,30 @@ async fn test_get_summarizer_groq() {
 }
 
 #[tokio::test]
+async fn test_get_summarizer_mistral() {
+    let config = AsumConfig {
+        provider: ProviderConfig::Mistral {
+            api_key: "test_key".to_string(),
+            model: "mistral-small-latest".to_string(),
+            url: None,
+        },
+        max_diff_length: 1000,
+        git_extensions: vec![],
+        enable_tree_view: true,
+        diff_reduction_mode: DiffReductionMode::File,
+        max_hunks_per_file: 3,
+        system_prompt: "sys".to_string(),
+        user_prompt: "user".to_string(),
+        ai_temperature: 0.7,
+        ai_top_p: 1.0,
+        ai_num_predict: 100,
+    };
+
+    let result = get_summarizer(config, false).await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
 async fn test_get_summarizer_missing_fields() {
     let config = AsumConfig {
         provider: ProviderConfig::Ollama {
@@ -343,6 +367,25 @@ async fn test_get_summarizer_missing_fields() {
         ai_num_predict: 100,
     };
     assert!(get_summarizer(config5, false).await.is_err());
+
+    let config6 = AsumConfig {
+        provider: ProviderConfig::Mistral {
+            model: "".to_string(),
+            api_key: "key".to_string(),
+            url: None,
+        },
+        max_diff_length: 1000,
+        git_extensions: vec![],
+        enable_tree_view: true,
+        diff_reduction_mode: DiffReductionMode::File,
+        max_hunks_per_file: 3,
+        system_prompt: "sys".to_string(),
+        user_prompt: "user".to_string(),
+        ai_temperature: 0.7,
+        ai_top_p: 1.0,
+        ai_num_predict: 100,
+    };
+    assert!(get_summarizer(config6, false).await.is_err());
 }
 
 #[tokio::test]

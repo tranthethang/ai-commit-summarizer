@@ -14,6 +14,7 @@ pub struct TomlConfig {
     pub openai: Option<OpenAIConfig>,
     pub vertexai: Option<VertexAIConfig>,
     pub groq: Option<GroqConfig>,
+    pub mistral: Option<MistralConfig>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -70,6 +71,13 @@ pub struct VertexAIConfig {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct GroqConfig {
+    pub api_key: String,
+    pub model: String,
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct MistralConfig {
     pub api_key: String,
     pub model: String,
     pub url: Option<String>,
@@ -192,6 +200,17 @@ BREAKING CHANGE: the synchronous API is no longer supported."#.to_string();
                 api_key: groq.api_key.clone(),
                 model: groq.model.clone(),
                 url: groq.url.clone(),
+            }
+        }
+        Provider::Mistral => {
+            let mistral = toml_config
+                .mistral
+                .as_ref()
+                .ok_or_else(|| anyhow!("Missing [mistral] configuration section"))?;
+            ProviderConfig::Mistral {
+                api_key: mistral.api_key.clone(),
+                model: mistral.model.clone(),
+                url: mistral.url.clone(),
             }
         }
     };
