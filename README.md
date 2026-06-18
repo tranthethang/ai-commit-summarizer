@@ -58,15 +58,15 @@ sudo cp target/release/asum /usr/local/bin/
 
 **asum** supports a wide range of cloud and local AI backends. Click a provider for its dedicated configuration details:
 
-| Provider | Default Model | Configuration Guide | Use Case |
-| :--- | :--- | :--- | :--- |
-| **Google Gemini** | `gemini-flash-latest` | [Gemini Setup Guide](./docs/providers/gemini.md) | High quality, low latency, free/pay-as-you-go. |
-| **OpenAI** | `gpt-5.1-mini` | [OpenAI Setup Guide](./docs/providers/openai.md) | Industry standard, OpenAI-compatible APIs (LM Studio, vLLM). |
-| **Google Vertex AI** | `gemini-flash-latest` | [Vertex AI Setup Guide](./docs/providers/vertexai.md) &middot; [gcloud Install Guide](./docs/gcloud-setup.md) | Enterprise environments, auto-authenticates via `gcloud`. |
-| **Ollama** | `qwen2.5-coder:3b` | [Ollama Setup Guide](./docs/providers/ollama.md) | 100% Local, private, and offline execution. |
-| **Groq** | `llama-3.3-70b-versatile` | [Groq Setup Guide](./docs/providers/groq.md) | Blazing-fast LPU inference for open models. |
-| **Mistral AI** | `mistral-small-latest` | [Mistral AI Setup Guide](./docs/providers/mistral.md) | Powerful open-weights and commercial French LLMs. |
-| **GitHub Models** | `gpt-4o-mini` | [GitHub Models Setup Guide](./docs/providers/github.md) | Access to 40+ models via GitHub PAT authentication. |
+| Provider | Default Model | Configuration Guide | Use Case | Free Tier |
+| :--- | :--- | :--- | :--- | :--- |
+| **GitHub Models** | `gpt-4o-mini` | [GitHub Models Setup Guide](./docs/providers/github.md) | Access to 40+ models via GitHub PAT authentication. | Yes |
+| **Google Gemini** | `gemini-flash-latest` | [Gemini Setup Guide](./docs/providers/gemini.md) | High quality, low latency, free/pay-as-you-go. | Yes |
+| **Google Vertex AI** | `gemini-flash-latest` | [Vertex AI Setup Guide](./docs/providers/vertexai.md) &middot; [gcloud Install Guide](./docs/gcloud-setup.md) | Enterprise environments, auto-authenticates via `gcloud`. | No |
+| **Groq** | `llama-3.3-70b-versatile` | [Groq Setup Guide](./docs/providers/groq.md) | Blazing-fast LPU inference for open models. | Yes |
+| **Mistral AI** | `mistral-small-latest` | [Mistral AI Setup Guide](./docs/providers/mistral.md) | Powerful open-weights and commercial French LLMs. | No |
+| **Ollama** | `qwen2.5-coder:3b` | [Ollama Setup Guide](./docs/providers/ollama.md) | 100% Local, private, and offline execution. | Yes |
+| **OpenAI** | `gpt-5.1-mini` | [OpenAI Setup Guide](./docs/providers/openai.md) | Industry standard, OpenAI-compatible APIs (LM Studio, vLLM). | No |
 
 ---
 
