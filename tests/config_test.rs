@@ -124,14 +124,24 @@ fn test_load_from_toml_missing_provider_sections() {
         "#
     )
     .unwrap();
-    let result4 = AsumConfig::load_from_toml(file4.path());
-    assert!(result4.is_err());
-    assert!(
-        result4
-            .unwrap_err()
-            .to_string()
-            .contains("Missing [ollama]")
-    );
+    let mut file5 = NamedTempFile::new().unwrap();
+    writeln!(
+        file5,
+        r#"
+        [general]
+        active_provider = "groq"
+        max_diff_length = 1000
+
+        [ai_params]
+        num_predict = 100
+        temperature = 0.5
+        top_p = 0.9
+        "#
+    )
+    .unwrap();
+    let result5 = AsumConfig::load_from_toml(file5.path());
+    assert!(result5.is_err());
+    assert!(result5.unwrap_err().to_string().contains("Missing [groq]"));
 }
 
 #[test]
@@ -401,6 +411,54 @@ fn test_verify_toml_table_driven() {
                 [ollama]
                 model = "test"
                 url = ""
+            "#,
+            is_ok: false,
+        },
+        TestCase {
+            name: "valid full config groq",
+            content: r#"
+                [general]
+                active_provider = "groq"
+                max_diff_length = 2000
+                [ai_params]
+                num_predict = 50
+                temperature = 0.7
+                top_p = 1.0
+                [groq]
+                model = "llama-3.3-70b-versatile"
+                api_key = "gsk_123"
+            "#,
+            is_ok: true,
+        },
+        TestCase {
+            name: "invalid config groq missing model",
+            content: r#"
+                [general]
+                active_provider = "groq"
+                max_diff_length = 2000
+                [ai_params]
+                num_predict = 50
+                temperature = 0.7
+                top_p = 1.0
+                [groq]
+                api_key = "gsk_123"
+                model = ""
+            "#,
+            is_ok: false,
+        },
+        TestCase {
+            name: "invalid config groq missing api_key",
+            content: r#"
+                [general]
+                active_provider = "groq"
+                max_diff_length = 2000
+                [ai_params]
+                num_predict = 50
+                temperature = 0.7
+                top_p = 1.0
+                [groq]
+                api_key = ""
+                model = "llama-3.3-70b-versatile"
             "#,
             is_ok: false,
         },

@@ -12,6 +12,7 @@
 # 5. [ollama]    - Ollama provider settings (Local LLMs)
 # 6. [openai]    - OpenAI provider settings (Optional)
 # 7. [vertexai]  - Google Cloud Vertex AI provider settings (Optional)
+# 8. [groq]      - Groq AI provider settings (Optional)
 # ==============================================================================
 
 
@@ -21,8 +22,8 @@
 [general]
 # The active AI provider to use.
 # Type: String
-# Options: "gemini", "ollama", "openai", "vertexai"
-active_provider = "ollama"
+# Options: "gemini", "ollama", "openai", "vertexai", "groq"
+active_provider = "groq"
 
 # The maximum character length of the git diff to process.
 # Type: Integer
@@ -135,3 +136,14 @@ url = "http://localhost:11434/api/chat"
 # access_token = "ya29..."
 # Optional: Custom endpoint URL.
 # url = "https://aiplatform.googleapis.com/v1/projects/your-gcp-project-id/locations/global/publishers/google/models/gemini-3.5-flash:generateContent"
+
+
+# ==============================================================================
+# 8. GROQ PROVIDER (OPTIONAL)
+# ==============================================================================
+# To use Groq, uncomment the section and settings below:
+# [groq]
+# api_key = "gsk_..."
+# model = "llama-3.3-70b-versatile"
+# Optional: Override the default Groq API URL.
+# url = "https://api.groq.com/openai/v1/chat/completions"
