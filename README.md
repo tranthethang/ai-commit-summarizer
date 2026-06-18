@@ -18,14 +18,14 @@ Get up and running in seconds. No complex setup or compilation required.
 Detects your OS and architecture, downloads the latest pre-compiled binary, and adds it to your path automatically:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tranthethang/ai-commit-summarizer/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tranthethang/ai-commit-summarizer/main/bin/install.sh | bash
 ```
 
 ### One-Command Uninstall
 Completely removes `asum` and its configurations from your system:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tranthethang/ai-commit-summarizer/main/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tranthethang/ai-commit-summarizer/main/bin/uninstall.sh | bash
 ```
 
 <details>
