@@ -47,3 +47,8 @@ Follow standard Rust naming conventions (RFC 430):
 - **Focus on "Why" Not "What"**: Inline comments should explain the reasoning behind complex logic or why a specific approach was taken, rather than just repeating what the code does. If the code is complex, consider refactoring it for readability first.
 - **Dead Code**: Do not leave commented-out blocks of code in the repository. Remove them and rely on version control (Git) to retrieve old code if needed.
 
+## Developer Guides
+
+- **Adding a New AI Provider**: For instructions on how to add and integrate a new AI provider, refer to the [Adding a New AI Provider Guide](file:///Users/thangtt/Documents/Github/ai-commit-summarizer/docs/adding-providers.md).
+
+
