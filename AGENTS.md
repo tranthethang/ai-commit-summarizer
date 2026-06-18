@@ -22,8 +22,8 @@ Follow standard Rust naming conventions (RFC 430):
 - **Acronyms**: Treat acronyms as words in `PascalCase` (e.g., `XmlHttpRequest` instead of `XMLHTTPRequest`, `VertexAi` instead of `VertexAI`).
 
 ### Formatting and Linting
-- **Cargo Fmt**: Always format your code using `cargo fmt` before proposing/submitting changes.
-- **Clippy**: Run `cargo clippy` to check for common mistakes and code improvements. Resolve all warnings before merging.
+- **Cargo Fmt**: Always format your code using `cargo fmt` before proposing/submitting changes. (Alternatively, run `make format` to run both formatting and clippy checks.)
+- **Clippy**: Run `cargo clippy` to check for common mistakes and code improvements. Resolve all warnings before merging. (Alternatively, run `make format`.)
 - **Allow Attributes**: Minimize the use of `#[allow(...)]`. When using it, always document why the lint warning is safely ignored.
 
 ### Error Handling

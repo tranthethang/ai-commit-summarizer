@@ -35,7 +35,7 @@ If you prefer building from source using Rust:
 ```bash
 git clone https://github.com/tranthethang/ai-commit-summarizer.git
 cd ai-commit-summarizer
-cargo build --release
+make release
 sudo cp target/release/asum /usr/local/bin/
 ```
 </details>
@@ -45,7 +45,7 @@ sudo cp target/release/asum /usr/local/bin/
 ## Features
 
 - **Strict Conventional Commits**: Generates standardized headers matching `<type>(<scope>): <description>` and detailed bodies.
-- **Multi-Provider Support**: Integrate with Google Gemini, local Ollama models, OpenAI, or Google Vertex AI.
+- **Multi-Provider Support**: Integrate with Google Gemini, OpenAI, Google Vertex AI, Ollama, Groq, or Mistral AI.
 - **Intelligent File List Fallback**: If you stage changes that are not source code (e.g. assets, lock files, binary files, or ignored extensions), `asum` automatically falls back to summarizing based on the list of staged filenames so you never get empty diff errors.
 - **Diff Reduction & Tree View**: Formats staged files as a clean directory tree and supports advanced diff reduction/truncation modes (by file or by hunk) to keep large diffs within AI model context limits.
 - **Context-Aware System Prompts**: Employs Few-Shot Prompting and precise system instructions to guarantee high-quality, concise, and structured commit proposals.
@@ -64,6 +64,8 @@ sudo cp target/release/asum /usr/local/bin/
 | **OpenAI** | `gpt-5.1-mini` | [OpenAI Setup Guide](./docs/providers/openai.md) | Industry standard, OpenAI-compatible APIs (LM Studio, vLLM). |
 | **Google Vertex AI** | `gemini-flash-latest` | [Vertex AI Setup Guide](./docs/providers/vertexai.md) &middot; [gcloud Install Guide](./docs/gcloud-setup.md) | Enterprise environments, auto-authenticates via `gcloud`. |
 | **Ollama** | `qwen2.5-coder:3b` | [Ollama Setup Guide](./docs/providers/ollama.md) | 100% Local, private, and offline execution. |
+| **Groq** | `llama-3.3-70b-versatile` | [Groq Setup Guide](./docs/providers/groq.md) | Blazing-fast LPU inference for open models. |
+| **Mistral AI** | `mistral-small-latest` | [Mistral AI Setup Guide](./docs/providers/mistral.md) | Powerful open-weights and commercial French LLMs. |
 
 ---
 
@@ -103,56 +105,18 @@ The `asum` command supports the following options:
 
 ### Example `asum.toml`
 
-Customize the AI settings, active provider, templates, and max diff lengths. Use [asum.toml.example](./asum.toml.example) as a template:
+Customize the AI settings, active provider, and parameters. For a full template with all supported providers and advanced parameters, see [asum.toml.example](./asum.toml.example).
+
+Here is a minimal configuration using Google Gemini:
 
 ```toml
 [general]
-active_provider = "ollama"  # Options: "gemini", "ollama", "openai", "vertexai"
-max_diff_length = 36000     # Limit diff size sent to AI
-# Optional: List of file extensions to include in git diff
-# git_extensions = ["*.rs", "*.js", "*.ts", "*.py", "*.go"]
-# Optional: Enable tree view of staged files (default: true)
-# enable_tree_view = true
-# Optional: Mode to truncate/reduce the diff if it is too large: "file" (whole files) or "hunk" (top hunks per file) (default: "file")
-# diff_reduction_mode = "file"
-# Optional: Maximum number of hunks per file to send in "hunk" reduction mode (default: 3)
-# max_hunks_per_file = 3
-
-[prompts]
-# Optional: Identity and rules for the AI
-# system_prompt = "You are an expert Git Commit Generator..."
-# Optional: Template for the user message. Use {{diff}} as placeholder.
-# user_prompt = "[INPUT DIFF]\n{{diff}}\n\n[OUTPUT]"
-
-[ai_params]
-num_predict = 4096
-temperature = 0.1
-top_p = 0.9
+active_provider = "gemini"
+max_diff_length = 36000
 
 [gemini]
 api_key = "YOUR_GEMINI_API_KEY"
 model = "gemini-flash-latest"
-# Optional: Override the default URL
-# url = "https://generativelanguage.googleapis.com"
-
-[ollama]
-model = "qwen2.5-coder:3b"
-url = "http://localhost:11434/api/chat"
-
-[openai]
-api_key = "YOUR_OPENAI_API_KEY"
-model = "gpt-5.1-mini"
-# Optional: Override the default URL
-# url = "https://api.openai.com/v1/chat/completions"
-
-[vertexai]
-project_id = "YOUR_GCP_PROJECT_ID"
-location = "global"
-model = "gemini-flash-latest"
-# Optional: Static access token. If omitted, assumes `gcloud auth print-access-token` is available.
-# access_token = "ya29..."
-# Optional: Override the default URL
-# url = "https://aiplatform.googleapis.com/v1/projects/YOUR_GCP_PROJECT_ID/locations/global/publishers/google/models/gemini-3.5-flash:generateContent"
 ```
 
 ### Config Verification
@@ -170,7 +134,7 @@ asum verify
 ### Running Tests
 To run the automated Rust tests:
 ```bash
-cargo test
+make test
 ```
 
 ### Coverage Report
@@ -180,9 +144,8 @@ Generate a detailed HTML coverage report using `grcov`:
 cargo install grcov
 rustup component add llvm-tools-preview
 
-# Run the coverage script
-chmod +x coverage.sh
-./coverage.sh
+# Run the coverage generator
+make coverage
 ```
 The resulting HTML report will be generated at `./coverage/index.html`.
 

@@ -16,7 +16,7 @@ To get started, you need to have the Rust toolchain installed. The Minimum Suppo
 
 2. Build the project:
    ```bash
-   cargo build
+   make build
    ```
 
 ## Coding Conventions
@@ -35,8 +35,7 @@ Please adhere to the following rules when working on the codebase:
 - Minimise the use of `#[allow(...)]` attributes.
 
 ### Formatting and Linting
-- Always format your code using `cargo fmt` before submitting.
-- Run `cargo clippy` and fix all warnings. The CI builds will fail if there are any formatting errors or clippy warnings.
+- Always format and lint your code using `make format` (which runs `cargo fmt` and `cargo clippy`) before submitting. Fix all warnings; the CI builds will fail if there are any formatting errors or clippy warnings.
 
 ### Error Handling
 - Avoid calling `unwrap()` or `expect()` in production code.
@@ -49,20 +48,19 @@ Always run tests to ensure your changes do not break existing functionality. All
 You can run the tests concurrently using:
 
 ```bash
-cargo test
+make test
 ```
 
 If you prefer to run them sequentially, or if you want to isolate environment checks, you can use:
 
 ```bash
-cargo test -- --test-threads=1
+make test-sequential
 ```
 
 ## Pull Request Checklist
 
 Before submitting a pull request, please make sure you have:
-1. Formatted the code with `cargo fmt`.
-2. Verified there are no Clippy warnings with `cargo clippy -- -D warnings`.
-3. Verified all tests pass with `cargo test -- --test-threads=1`.
-4. Documented any public APIs with `///` doc comments.
-5. Updated the CHANGELOG.md if you added new features or fixed bugs.
+1. Formatted and linted the code with `make format`.
+2. Verified all tests pass with `make test` (or `make test-sequential`).
+3. Documented any public APIs with `///` doc comments.
+4. Updated the CHANGELOG.md if you added new features or fixed bugs.
