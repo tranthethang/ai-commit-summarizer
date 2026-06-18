@@ -22,8 +22,8 @@ Follow standard Rust naming conventions (RFC 430):
 - **Acronyms**: Treat acronyms as words in `PascalCase` (e.g., `XmlHttpRequest` instead of `XMLHTTPRequest`, `VertexAi` instead of `VertexAI`).
 
 ### Formatting and Linting
-- **Cargo Fmt**: Always format your code using `cargo fmt` before proposing/submitting changes.
-- **Clippy**: Run `cargo clippy` to check for common mistakes and code improvements. Resolve all warnings before merging.
+- **Cargo Fmt**: Always format your code using `cargo fmt` before proposing/submitting changes. (Alternatively, run `make format` to run both formatting and clippy checks.)
+- **Clippy**: Run `cargo clippy` to check for common mistakes and code improvements. Resolve all warnings before merging. (Alternatively, run `make format`.)
 - **Allow Attributes**: Minimize the use of `#[allow(...)]`. When using it, always document why the lint warning is safely ignored.
 
 ### Error Handling
@@ -46,4 +46,9 @@ Follow standard Rust naming conventions (RFC 430):
 - **Inline Comments**: Use `//` for inline comments. Place them above the lines of code they describe, not inline on the same line, for better readability.
 - **Focus on "Why" Not "What"**: Inline comments should explain the reasoning behind complex logic or why a specific approach was taken, rather than just repeating what the code does. If the code is complex, consider refactoring it for readability first.
 - **Dead Code**: Do not leave commented-out blocks of code in the repository. Remove them and rely on version control (Git) to retrieve old code if needed.
+
+## Developer Guides
+
+- **Adding a New AI Provider**: For instructions on how to add and integrate a new AI provider, refer to the [Adding a New AI Provider Guide](file:///Users/thangtt/Documents/Github/ai-commit-summarizer/docs/adding-providers.md).
+
 

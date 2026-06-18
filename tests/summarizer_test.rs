@@ -97,6 +97,7 @@ async fn test_get_summarizer_ollama() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
 
     let result = get_summarizer(config, false).await;
@@ -123,6 +124,7 @@ async fn test_get_summarizer_gemini() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
 
     let result = get_summarizer(config, false).await;
@@ -149,6 +151,7 @@ async fn test_get_summarizer_gemini_long_key() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
 
     let result = get_summarizer(config, false).await;
@@ -190,6 +193,7 @@ async fn test_get_summarizer_openai() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
 
     let result = get_summarizer(config, false).await;
@@ -216,6 +220,82 @@ async fn test_get_summarizer_vertexai() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
+    };
+
+    let result = get_summarizer(config, false).await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_get_summarizer_groq() {
+    let config = AsumConfig {
+        provider: ProviderConfig::Groq {
+            api_key: "test_key".to_string(),
+            model: "llama-3.3-70b-versatile".to_string(),
+            url: None,
+        },
+        max_diff_length: 1000,
+        git_extensions: vec![],
+        enable_tree_view: true,
+        diff_reduction_mode: DiffReductionMode::File,
+        max_hunks_per_file: 3,
+        system_prompt: "sys".to_string(),
+        user_prompt: "user".to_string(),
+        ai_temperature: 0.7,
+        ai_top_p: 1.0,
+        ai_num_predict: 100,
+        fallbacks: vec![],
+    };
+
+    let result = get_summarizer(config, false).await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_get_summarizer_mistral() {
+    let config = AsumConfig {
+        provider: ProviderConfig::Mistral {
+            api_key: "test_key".to_string(),
+            model: "mistral-small-latest".to_string(),
+            url: None,
+        },
+        max_diff_length: 1000,
+        git_extensions: vec![],
+        enable_tree_view: true,
+        diff_reduction_mode: DiffReductionMode::File,
+        max_hunks_per_file: 3,
+        system_prompt: "sys".to_string(),
+        user_prompt: "user".to_string(),
+        ai_temperature: 0.7,
+        ai_top_p: 1.0,
+        ai_num_predict: 100,
+        fallbacks: vec![],
+    };
+
+    let result = get_summarizer(config, false).await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_get_summarizer_github() {
+    let config = AsumConfig {
+        provider: ProviderConfig::Github {
+            api_key: "test_key".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            url: None,
+        },
+        max_diff_length: 1000,
+        git_extensions: vec![],
+        enable_tree_view: true,
+        diff_reduction_mode: DiffReductionMode::File,
+        max_hunks_per_file: 3,
+        system_prompt: "sys".to_string(),
+        user_prompt: "user".to_string(),
+        ai_temperature: 0.7,
+        ai_top_p: 1.0,
+        ai_num_predict: 100,
+        fallbacks: vec![],
     };
 
     let result = get_summarizer(config, false).await;
@@ -239,6 +319,7 @@ async fn test_get_summarizer_missing_fields() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
     assert!(get_summarizer(config, false).await.is_err());
 
@@ -258,6 +339,7 @@ async fn test_get_summarizer_missing_fields() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
     assert!(get_summarizer(config2, false).await.is_err());
 
@@ -277,6 +359,7 @@ async fn test_get_summarizer_missing_fields() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
     assert!(get_summarizer(config3, false).await.is_err());
 
@@ -298,8 +381,69 @@ async fn test_get_summarizer_missing_fields() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
     assert!(get_summarizer(config4, false).await.is_err());
+
+    let config5 = AsumConfig {
+        provider: ProviderConfig::Groq {
+            model: "".to_string(),
+            api_key: "key".to_string(),
+            url: None,
+        },
+        max_diff_length: 1000,
+        git_extensions: vec![],
+        enable_tree_view: true,
+        diff_reduction_mode: DiffReductionMode::File,
+        max_hunks_per_file: 3,
+        system_prompt: "sys".to_string(),
+        user_prompt: "user".to_string(),
+        ai_temperature: 0.7,
+        ai_top_p: 1.0,
+        ai_num_predict: 100,
+        fallbacks: vec![],
+    };
+    assert!(get_summarizer(config5, false).await.is_err());
+
+    let config6 = AsumConfig {
+        provider: ProviderConfig::Mistral {
+            model: "".to_string(),
+            api_key: "key".to_string(),
+            url: None,
+        },
+        max_diff_length: 1000,
+        git_extensions: vec![],
+        enable_tree_view: true,
+        diff_reduction_mode: DiffReductionMode::File,
+        max_hunks_per_file: 3,
+        system_prompt: "sys".to_string(),
+        user_prompt: "user".to_string(),
+        ai_temperature: 0.7,
+        ai_top_p: 1.0,
+        ai_num_predict: 100,
+        fallbacks: vec![],
+    };
+    assert!(get_summarizer(config6, false).await.is_err());
+
+    let config7 = AsumConfig {
+        provider: ProviderConfig::Github {
+            model: "".to_string(),
+            api_key: "key".to_string(),
+            url: None,
+        },
+        max_diff_length: 1000,
+        git_extensions: vec![],
+        enable_tree_view: true,
+        diff_reduction_mode: DiffReductionMode::File,
+        max_hunks_per_file: 3,
+        system_prompt: "sys".to_string(),
+        user_prompt: "user".to_string(),
+        ai_temperature: 0.7,
+        ai_top_p: 1.0,
+        ai_num_predict: 100,
+        fallbacks: vec![],
+    };
+    assert!(get_summarizer(config7, false).await.is_err());
 }
 
 #[tokio::test]
