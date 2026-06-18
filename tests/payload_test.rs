@@ -17,6 +17,7 @@ fn get_test_config() -> AsumConfig {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     }
 }
 

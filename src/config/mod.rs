@@ -87,6 +87,8 @@ pub enum ProviderConfig {
 pub struct AsumConfig {
     /// The AI provider config containing model and connection details.
     pub provider: ProviderConfig,
+    /// Ordered list of fallback provider configurations to try on primary failure.
+    pub fallbacks: Vec<ProviderConfig>,
     /// Maximum character length of the git diff to send to the AI.
     pub max_diff_length: usize,
     /// List of file extensions to include in the git diff.

@@ -128,6 +128,36 @@ Verify the syntax and completeness of your `asum.toml` by running:
 asum verify
 ```
 
+### Provider Fallback
+
+If the active provider fails (rate limit, timeout, API errors, etc.), **asum** can automatically retry with alternative providers. Add a `fallbacks` list to your `[general]` section:
+
+```toml
+[general]
+active_provider = "openai"
+fallbacks = ["github", "mistral", "groq"]
+max_diff_length = 36000
+
+# Configure each fallback provider below
+[openai]
+api_key = "sk-..."
+model = "gpt-5.1-mini"
+
+[github]
+api_key = "ghp_..."
+model = "gpt-4o-mini"
+
+[mistral]
+api_key = "..."
+model = "mistral-small-latest"
+
+[groq]
+api_key = "gsk_..."
+model = "llama-3.3-70b-versatile"
+```
+
+The retry order follows the `fallbacks` list exactly. The maximum number of retries equals the number of providers in the list.
+
 ---
 
 ## Testing & Coverage

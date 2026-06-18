@@ -813,3 +813,211 @@ fn test_asum_config_load_no_config() {
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("not found"));
 }
+
+#[test]
+fn test_load_from_toml_with_fallbacks() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(
+        file,
+        r#"
+        [general]
+        active_provider = "groq"
+        max_diff_length = 1000
+        fallbacks = ["github", "mistral"]
+
+        [ai_params]
+        num_predict = 100
+        temperature = 0.5
+        top_p = 0.9
+
+        [groq]
+        api_key = "gsk_test"
+        model = "llama-3.3-70b-versatile"
+
+        [github]
+        api_key = "ghp_test"
+        model = "gpt-4o-mini"
+
+        [mistral]
+        api_key = "mistral_key"
+        model = "mistral-small-latest"
+        "#
+    )
+    .unwrap();
+
+    let config = AsumConfig::load_from_toml(file.path()).unwrap();
+    assert_eq!(
+        config.provider,
+        ProviderConfig::Groq {
+            api_key: "gsk_test".to_string(),
+            model: "llama-3.3-70b-versatile".to_string(),
+            url: None,
+        }
+    );
+    assert_eq!(config.fallbacks.len(), 2);
+    assert_eq!(
+        config.fallbacks[0],
+        ProviderConfig::Github {
+            api_key: "ghp_test".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            url: None,
+        }
+    );
+    assert_eq!(
+        config.fallbacks[1],
+        ProviderConfig::Mistral {
+            api_key: "mistral_key".to_string(),
+            model: "mistral-small-latest".to_string(),
+            url: None,
+        }
+    );
+}
+
+#[test]
+fn test_load_from_toml_empty_fallbacks() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(
+        file,
+        r#"
+        [general]
+        active_provider = "groq"
+        max_diff_length = 1000
+        fallbacks = []
+
+        [ai_params]
+        num_predict = 100
+        temperature = 0.5
+        top_p = 0.9
+
+        [groq]
+        api_key = "gsk_test"
+        model = "llama-3.3-70b-versatile"
+        "#
+    )
+    .unwrap();
+
+    let config = AsumConfig::load_from_toml(file.path()).unwrap();
+    assert!(config.fallbacks.is_empty());
+}
+
+#[test]
+fn test_load_from_toml_no_fallbacks_field() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(
+        file,
+        r#"
+        [general]
+        active_provider = "groq"
+        max_diff_length = 1000
+
+        [ai_params]
+        num_predict = 100
+        temperature = 0.5
+        top_p = 0.9
+
+        [groq]
+        api_key = "gsk_test"
+        model = "llama-3.3-70b-versatile"
+        "#
+    )
+    .unwrap();
+
+    let config = AsumConfig::load_from_toml(file.path()).unwrap();
+    assert!(config.fallbacks.is_empty());
+}
+
+#[test]
+fn test_load_from_toml_fallback_missing_provider_section() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(
+        file,
+        r#"
+        [general]
+        active_provider = "groq"
+        max_diff_length = 1000
+        fallbacks = ["github"]
+
+        [ai_params]
+        num_predict = 100
+        temperature = 0.5
+        top_p = 0.9
+
+        [groq]
+        api_key = "gsk_test"
+        model = "llama-3.3-70b-versatile"
+        "#
+    )
+    .unwrap();
+
+    let result = AsumConfig::load_from_toml(file.path());
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("Missing [github]"));
+}
+
+#[test]
+fn test_verify_toml_with_valid_fallbacks() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(
+        file,
+        r#"
+        [general]
+        active_provider = "groq"
+        max_diff_length = 1000
+        fallbacks = ["github", "mistral"]
+
+        [ai_params]
+        num_predict = 100
+        temperature = 0.5
+        top_p = 0.9
+
+        [groq]
+        api_key = "gsk_test"
+        model = "llama-3.3-70b-versatile"
+
+        [github]
+        api_key = "ghp_test"
+        model = "gpt-4o-mini"
+
+        [mistral]
+        api_key = "mistral_key"
+        model = "mistral-small-latest"
+        "#
+    )
+    .unwrap();
+
+    let result = verify_toml(file.path());
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_verify_toml_with_invalid_fallback_config() {
+    let mut file = NamedTempFile::new().unwrap();
+    writeln!(
+        file,
+        r#"
+        [general]
+        active_provider = "groq"
+        max_diff_length = 1000
+        fallbacks = ["github"]
+
+        [ai_params]
+        num_predict = 100
+        temperature = 0.5
+        top_p = 0.9
+
+        [groq]
+        api_key = "gsk_test"
+        model = "llama-3.3-70b-versatile"
+
+        [github]
+        api_key = ""
+        model = "gpt-4o-mini"
+        "#
+    )
+    .unwrap();
+
+    let result = verify_toml(file.path());
+    assert!(result.is_err());
+    let error_msg = result.unwrap_err().to_string();
+    assert!(error_msg.contains("Fallback provider"));
+}

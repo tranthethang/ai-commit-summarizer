@@ -26,6 +26,7 @@ pub struct GeneralConfig {
     pub enable_tree_view: Option<bool>,
     pub diff_reduction_mode: Option<DiffReductionMode>,
     pub max_hunks_per_file: Option<usize>,
+    pub fallbacks: Option<Vec<Provider>>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -91,6 +92,90 @@ pub struct GithubConfig {
     pub url: Option<String>,
 }
 
+/// Builds a `ProviderConfig` for the given provider from the parsed TOML sections.
+fn build_provider_config(provider: Provider, toml_config: &TomlConfig) -> Result<ProviderConfig> {
+    match provider {
+        Provider::Gemini => {
+            let gemini = toml_config
+                .gemini
+                .as_ref()
+                .ok_or_else(|| anyhow!("Missing [gemini] configuration section"))?;
+            Ok(ProviderConfig::Gemini {
+                api_key: gemini.api_key.clone(),
+                model: gemini.model.clone(),
+                url: gemini.url.clone(),
+            })
+        }
+        Provider::Ollama => {
+            let ollama = toml_config
+                .ollama
+                .as_ref()
+                .ok_or_else(|| anyhow!("Missing [ollama] configuration section"))?;
+            Ok(ProviderConfig::Ollama {
+                model: ollama.model.clone(),
+                url: ollama.url.clone(),
+            })
+        }
+        Provider::OpenAI => {
+            let openai = toml_config
+                .openai
+                .as_ref()
+                .ok_or_else(|| anyhow!("Missing [openai] configuration section"))?;
+            Ok(ProviderConfig::OpenAI {
+                api_key: openai.api_key.clone(),
+                model: openai.model.clone(),
+                url: openai.url.clone(),
+            })
+        }
+        Provider::VertexAI => {
+            let vertex = toml_config
+                .vertexai
+                .as_ref()
+                .ok_or_else(|| anyhow!("Missing [vertexai] configuration section"))?;
+            Ok(ProviderConfig::VertexAI {
+                project_id: vertex.project_id.clone(),
+                location: vertex.location.clone(),
+                model: vertex.model.clone(),
+                access_token: vertex.access_token.clone(),
+                url: vertex.url.clone(),
+            })
+        }
+        Provider::Groq => {
+            let groq = toml_config
+                .groq
+                .as_ref()
+                .ok_or_else(|| anyhow!("Missing [groq] configuration section"))?;
+            Ok(ProviderConfig::Groq {
+                api_key: groq.api_key.clone(),
+                model: groq.model.clone(),
+                url: groq.url.clone(),
+            })
+        }
+        Provider::Mistral => {
+            let mistral = toml_config
+                .mistral
+                .as_ref()
+                .ok_or_else(|| anyhow!("Missing [mistral] configuration section"))?;
+            Ok(ProviderConfig::Mistral {
+                api_key: mistral.api_key.clone(),
+                model: mistral.model.clone(),
+                url: mistral.url.clone(),
+            })
+        }
+        Provider::Github => {
+            let github = toml_config
+                .github
+                .as_ref()
+                .ok_or_else(|| anyhow!("Missing [github] configuration section"))?;
+            Ok(ProviderConfig::Github {
+                api_key: github.api_key.clone(),
+                model: github.model.clone(),
+                url: github.url.clone(),
+            })
+        }
+    }
+}
+
 pub fn load_from_toml_impl(path: &Path) -> Result<AsumConfig> {
     let content = fs::read_to_string(path)?;
     let toml_config: TomlConfig = toml::from_str(&content)?;
@@ -153,89 +238,24 @@ BREAKING CHANGE: the synchronous API is no longer supported."#.to_string();
     let default_diff_reduction_mode = DiffReductionMode::File;
     let default_max_hunks_per_file = 3;
 
-    let provider = match toml_config.general.active_provider {
-        Provider::Gemini => {
-            let gemini = toml_config
-                .gemini
-                .as_ref()
-                .ok_or_else(|| anyhow!("Missing [gemini] configuration section"))?;
-            ProviderConfig::Gemini {
-                api_key: gemini.api_key.clone(),
-                model: gemini.model.clone(),
-                url: gemini.url.clone(),
+    let provider = build_provider_config(toml_config.general.active_provider, &toml_config)?;
+
+    // Build fallback provider configs from the fallbacks list
+    let fallbacks = match &toml_config.general.fallbacks {
+        Some(fallback_providers) => {
+            let mut configs = Vec::with_capacity(fallback_providers.len());
+            for fb_provider in fallback_providers {
+                let fb_config = build_provider_config(*fb_provider, &toml_config)?;
+                configs.push(fb_config);
             }
+            configs
         }
-        Provider::Ollama => {
-            let ollama = toml_config
-                .ollama
-                .as_ref()
-                .ok_or_else(|| anyhow!("Missing [ollama] configuration section"))?;
-            ProviderConfig::Ollama {
-                model: ollama.model.clone(),
-                url: ollama.url.clone(),
-            }
-        }
-        Provider::OpenAI => {
-            let openai = toml_config
-                .openai
-                .as_ref()
-                .ok_or_else(|| anyhow!("Missing [openai] configuration section"))?;
-            ProviderConfig::OpenAI {
-                api_key: openai.api_key.clone(),
-                model: openai.model.clone(),
-                url: openai.url.clone(),
-            }
-        }
-        Provider::VertexAI => {
-            let vertex = toml_config
-                .vertexai
-                .as_ref()
-                .ok_or_else(|| anyhow!("Missing [vertexai] configuration section"))?;
-            ProviderConfig::VertexAI {
-                project_id: vertex.project_id.clone(),
-                location: vertex.location.clone(),
-                model: vertex.model.clone(),
-                access_token: vertex.access_token.clone(),
-                url: vertex.url.clone(),
-            }
-        }
-        Provider::Groq => {
-            let groq = toml_config
-                .groq
-                .as_ref()
-                .ok_or_else(|| anyhow!("Missing [groq] configuration section"))?;
-            ProviderConfig::Groq {
-                api_key: groq.api_key.clone(),
-                model: groq.model.clone(),
-                url: groq.url.clone(),
-            }
-        }
-        Provider::Mistral => {
-            let mistral = toml_config
-                .mistral
-                .as_ref()
-                .ok_or_else(|| anyhow!("Missing [mistral] configuration section"))?;
-            ProviderConfig::Mistral {
-                api_key: mistral.api_key.clone(),
-                model: mistral.model.clone(),
-                url: mistral.url.clone(),
-            }
-        }
-        Provider::Github => {
-            let github = toml_config
-                .github
-                .as_ref()
-                .ok_or_else(|| anyhow!("Missing [github] configuration section"))?;
-            ProviderConfig::Github {
-                api_key: github.api_key.clone(),
-                model: github.model.clone(),
-                url: github.url.clone(),
-            }
-        }
+        None => Vec::new(),
     };
 
     Ok(AsumConfig {
         provider,
+        fallbacks,
         max_diff_length: toml_config.general.max_diff_length,
         git_extensions: toml_config
             .general

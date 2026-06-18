@@ -105,11 +105,8 @@ pub fn verify_toml<P: AsRef<Path>>(path: P) -> Result<()> {
     verify_toml_impl(path.as_ref())
 }
 
-fn verify_toml_impl(path: &Path) -> Result<()> {
-    let content = fs::read_to_string(path)?;
-    let toml_config: TomlConfig = toml::from_str(&content)?;
-
-    match toml_config.general.active_provider {
+fn verify_provider(provider: Provider, toml_config: &TomlConfig) -> Result<()> {
+    match provider {
         Provider::Gemini => verify_gemini_config(toml_config.gemini.as_ref()),
         Provider::Ollama => verify_ollama_config(toml_config.ollama.as_ref()),
         Provider::OpenAI => verify_openai_config(toml_config.openai.as_ref()),
@@ -118,4 +115,22 @@ fn verify_toml_impl(path: &Path) -> Result<()> {
         Provider::Mistral => verify_mistral_config(toml_config.mistral.as_ref()),
         Provider::Github => verify_github_config(toml_config.github.as_ref()),
     }
+}
+
+fn verify_toml_impl(path: &Path) -> Result<()> {
+    let content = fs::read_to_string(path)?;
+    let toml_config: TomlConfig = toml::from_str(&content)?;
+
+    // Validate the active provider
+    verify_provider(toml_config.general.active_provider, &toml_config)?;
+
+    // Validate each fallback provider
+    if let Some(fallbacks) = &toml_config.general.fallbacks {
+        for fb_provider in fallbacks {
+            verify_provider(*fb_provider, &toml_config)
+                .map_err(|e| anyhow::anyhow!("Fallback provider {:?}: {}", fb_provider, e))?;
+        }
+    }
+
+    Ok(())
 }

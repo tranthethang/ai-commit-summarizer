@@ -97,6 +97,7 @@ async fn test_get_summarizer_ollama() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
 
     let result = get_summarizer(config, false).await;
@@ -123,6 +124,7 @@ async fn test_get_summarizer_gemini() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
 
     let result = get_summarizer(config, false).await;
@@ -149,6 +151,7 @@ async fn test_get_summarizer_gemini_long_key() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
 
     let result = get_summarizer(config, false).await;
@@ -190,6 +193,7 @@ async fn test_get_summarizer_openai() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
 
     let result = get_summarizer(config, false).await;
@@ -216,6 +220,7 @@ async fn test_get_summarizer_vertexai() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
 
     let result = get_summarizer(config, false).await;
@@ -240,6 +245,7 @@ async fn test_get_summarizer_groq() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
 
     let result = get_summarizer(config, false).await;
@@ -264,6 +270,7 @@ async fn test_get_summarizer_mistral() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
 
     let result = get_summarizer(config, false).await;
@@ -288,6 +295,7 @@ async fn test_get_summarizer_github() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
 
     let result = get_summarizer(config, false).await;
@@ -311,6 +319,7 @@ async fn test_get_summarizer_missing_fields() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
     assert!(get_summarizer(config, false).await.is_err());
 
@@ -330,6 +339,7 @@ async fn test_get_summarizer_missing_fields() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
     assert!(get_summarizer(config2, false).await.is_err());
 
@@ -349,6 +359,7 @@ async fn test_get_summarizer_missing_fields() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
     assert!(get_summarizer(config3, false).await.is_err());
 
@@ -370,6 +381,7 @@ async fn test_get_summarizer_missing_fields() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
     assert!(get_summarizer(config4, false).await.is_err());
 
@@ -389,6 +401,7 @@ async fn test_get_summarizer_missing_fields() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
     assert!(get_summarizer(config5, false).await.is_err());
 
@@ -408,6 +421,7 @@ async fn test_get_summarizer_missing_fields() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
     assert!(get_summarizer(config6, false).await.is_err());
 
@@ -427,6 +441,7 @@ async fn test_get_summarizer_missing_fields() {
         ai_temperature: 0.7,
         ai_top_p: 1.0,
         ai_num_predict: 100,
+        fallbacks: vec![],
     };
     assert!(get_summarizer(config7, false).await.is_err());
 }

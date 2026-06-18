@@ -52,6 +52,15 @@ max_diff_length = 36000
 # Type: Integer (default: 3)
 # max_hunks_per_file = 3
 
+# Optional: Ordered list of fallback providers to try if the active provider fails.
+# When the active provider returns an error (rate limit, timeout, API error, etc.),
+# ASUM will automatically retry with each fallback provider in order.
+# The maximum number of retries equals the number of providers in this list.
+# Each fallback provider must have a valid configuration section below.
+# Type: Array of Strings
+# Options: "gemini", "ollama", "openai", "vertexai", "groq", "mistral", "github"
+# Example: fallbacks = ["mistral", "groq", "github", "gemini", "vertexai"]
+# fallbacks = []
 
 # ==============================================================================
 # 2. PROMPT TEMPLATES
