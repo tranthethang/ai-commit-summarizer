@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Navigate to the project root directory (parent of bin)
+cd "$(dirname "$0")/.."
+
 # Run formatting and linting in parallel for efficiency
 echo "Running format and clippy in parallel..."
 

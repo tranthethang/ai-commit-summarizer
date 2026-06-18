@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Navigate to the project root directory (parent of bin)
+cd "$(dirname "$0")/.."
+
 # 1. Clean up old coverage data
 rm -rf target/debug/deps/*.gcno target/debug/deps/*.gcda target/*.profraw
 
@@ -34,5 +37,3 @@ rm -f target/*.profraw
 
 # 5. Display completion message
 echo "HTML report has been generated at: ./coverage/index.html"
-
-# (Optional) Check coverage using lcov or a json parser tool if threshold validation (e.g. 90%) is needed
