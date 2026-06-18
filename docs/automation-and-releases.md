@@ -26,17 +26,17 @@ Currently, the pipeline compiles binaries for:
 
 ## Installation Scripts
 
-The `install.sh` script provides a user-friendly mechanism for downloading and installing the pre-compiled binary.
+The `bin/install.sh` script provides a user-friendly mechanism for downloading and installing the pre-compiled binary.
 - It detects the user's OS (`uname -s`) and architecture (`uname -m`).
 - It constructs the URL to the corresponding asset in the `latest` GitHub release.
 - It uses `curl` to download and extract the tarball.
 - Finally, it copies the binary to `/usr/local/bin` (using `sudo`).
 
-The `uninstall.sh` simply removes the binary from `/usr/local/bin`.
+The `bin/uninstall.sh` simply removes the binary from `/usr/local/bin`.
 
 ## Maintenance
 
 If you need to support additional platforms (e.g., Windows), you can:
 1. Update the `matrix` under `jobs.build.strategy` in `.github/workflows/release.yml` with the new OS runner and Rust target.
 2. Ensure the packaging steps handle `.exe` files or different archive formats if required (e.g., `.zip` for Windows).
-3. Update `install.sh`'s OS detection logic if the new platform uses a bash-compatible shell. For Windows native, consider adding a `.ps1` installation script instead.
+3. Update `bin/install.sh`'s OS detection logic if the new platform uses a bash-compatible shell. For Windows native, consider adding a `.ps1` installation script instead.
