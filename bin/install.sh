@@ -30,7 +30,7 @@ fi
 
 if [ "$OS" = "linux" ]; then
     if [ "$ARCH" = "x86_64" ]; then
-        TARGET="x86_64-unknown-linux-gnu"
+        TARGET="x86_64-unknown-linux-musl"
     else
         echo "❌ Error: Pre-compiled binaries for Linux $ARCH are not available yet."
         exit 1
