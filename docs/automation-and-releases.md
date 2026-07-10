@@ -9,16 +9,16 @@ The repository uses a rolling release strategy. Every time new code is pushed or
 ## Supported Platforms
 
 Currently, the pipeline compiles binaries for:
-- `x86_64-unknown-linux-gnu` (Linux x86_64)
+- `x86_64-unknown-linux-musl` (Linux x86_64, statically linked for broad distro compatibility)
 - `x86_64-apple-darwin` (macOS Intel)
 - `aarch64-apple-darwin` (macOS Apple Silicon)
 
 ## Workflow Details (`release.yml`)
 
 1. **Trigger:** The workflow runs on the `push` event for the `main` branch.
-2. **Build Matrix:** A matrix strategy is used to run parallel jobs on `ubuntu-latest` and `macos-latest` runners, targeting the required Rust architectures.
-3. **Compilation:** `cargo build --release` is executed.
-4. **Packaging:** The compiled binaries are packed into `.tar.gz` archives (e.g., `asum-x86_64-unknown-linux-gnu.tar.gz`).
+2. **Build Matrix:** A matrix strategy is used to run parallel jobs on `ubuntu-latest` and `macos-latest` runners, targeting the required Rust architectures. Linux binaries are built with the `x86_64-unknown-linux-musl` target so they are statically linked and run on distros with older GLIBC versions.
+3. **Compilation:** `cargo build --release` is executed. Linux builds install `musl-tools` and use `rustls-tls` (via `reqwest`) to avoid OpenSSL/GLIBC coupling.
+4. **Packaging:** The compiled binaries are packed into `.tar.gz` archives (e.g., `asum-x86_64-unknown-linux-musl.tar.gz`).
 5. **Publishing:** 
    - An intermediate job collects all the artifacts from the matrix build.
    - Using the GitHub CLI (`gh`), it deletes the existing `latest` tag and release.
