@@ -4,8 +4,67 @@
 //! and file lists for AI analysis.
 
 use crate::config::DiffReductionMode;
+use anyhow::Context;
 use std::collections::BTreeMap;
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
+
+/// Commits staged changes in the current directory using `git commit -F -`,
+/// writing `message` to the child process stdin (no shell interpolation).
+pub fn commit_message_via_stdin(message: &str) -> anyhow::Result<()> {
+    commit_message_via_stdin_in_path(message, ".")
+}
+
+/// Commits staged changes in `path` using `git commit -F -` with `message` on stdin.
+pub fn commit_message_via_stdin_in_path(message: &str, path: &str) -> anyhow::Result<()> {
+    let mut child = Command::new("git")
+        .args(["commit", "-F", "-"])
+        .current_dir(path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("Failed to spawn git commit")?;
+
+    {
+        let mut stdin = child
+            .stdin
+            .take()
+            .context("Failed to open git commit stdin")?;
+        // Git may exit before reading stdin (nothing staged, early hook
+        // failure). Ignore BrokenPipe so git's own error is reported below.
+        if let Err(e) = stdin.write_all(message.as_bytes())
+            && e.kind() != std::io::ErrorKind::BrokenPipe
+        {
+            return Err(e).context("Failed to write commit message to git stdin");
+        }
+    }
+
+    let output = child
+        .wait_with_output()
+        .context("Failed to wait for git commit")?;
+
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!(
+            "git commit failed ({}): {}{}",
+            output.status,
+            stdout.trim(),
+            if stderr.trim().is_empty() {
+                String::new()
+            } else {
+                format!("\n{}", stderr.trim())
+            }
+        );
+    }
+
+    // Forward git/hook output on success so it is not hidden.
+    let _ = std::io::stderr().write_all(&output.stdout);
+    let _ = std::io::stderr().write_all(&output.stderr);
+
+    Ok(())
+}
 
 /// Retrieves the git diff of staged changes for the specified file extensions in the current directory.
 pub fn get_git_diff(extensions: &[String]) -> anyhow::Result<String> {

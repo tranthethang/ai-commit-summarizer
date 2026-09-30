@@ -10,7 +10,18 @@ fn test_help_args() {
     cmd.arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("AI Commit Summarizer"));
+        .stdout(predicate::str::contains("AI Commit Summarizer"))
+        .stdout(predicate::str::contains("--force"))
+        .stdout(predicate::str::contains("confirm and run `git commit`"));
+}
+
+#[test]
+fn test_help_short_force_flag() {
+    let mut cmd = Command::cargo_bin("asum").unwrap();
+    cmd.arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("-f, --force"));
 }
 
 #[test]
