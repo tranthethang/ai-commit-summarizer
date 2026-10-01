@@ -6,8 +6,11 @@
 use anyhow::Context;
 use arboard::Clipboard;
 use asum::config::{AsumConfig, verify_toml};
+use asum::git::commit_message_via_stdin;
 use asum::payload::prepare_payload;
+use asum::shell::{escape_posix_single_quoted, should_commit_after_confirm};
 use asum::summarizer::get_summarizer;
+use std::io::{self, Write};
 use tracing::{error, info, warn};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
@@ -24,6 +27,10 @@ pub struct Cli {
     /// Enable verbose output (print prompts and raw API responses)
     #[arg(short, long, global = true)]
     pub verbose: bool,
+
+    /// After generating the message, confirm and run `git commit` with it (asum flag; not git --force)
+    #[arg(short = 'f', long = "force")]
+    pub force: bool,
 
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -85,7 +92,11 @@ pub async fn run_app(cli: Cli) -> anyhow::Result<()> {
     match summarizer.summarize(&payload).await {
         Ok(final_msg) => {
             println!("{}", final_msg);
-            handle_output(final_msg);
+            if cli.force {
+                handle_force_commit(&final_msg)?;
+            } else {
+                handle_clipboard_output(&final_msg);
+            }
         }
         Err(e) => {
             error!("Summarization failed: {}", e);
@@ -130,12 +141,31 @@ fn handle_verify_command() -> anyhow::Result<()> {
     }
 }
 
-fn handle_output(final_msg: String) {
+fn handle_clipboard_output(final_msg: &str) {
+    let escaped = escape_posix_single_quoted(final_msg);
     if let Ok(mut clipboard) = Clipboard::new() {
-        if let Err(e) = clipboard.set_text(final_msg) {
+        if let Err(e) = clipboard.set_text(escaped) {
             error!("Could not copy to clipboard: {}", e);
         } else {
-            info!("Message copied to clipboard. Press Cmd+V to paste.");
+            info!("Shell-safe message copied to clipboard. Paste after: git commit -m ");
         }
     }
+}
+
+fn handle_force_commit(final_msg: &str) -> anyhow::Result<()> {
+    eprint!("Commit with this message? [Y/n] ");
+    let _ = io::stderr().flush();
+
+    let mut answer = String::new();
+    let bytes_read = io::stdin()
+        .read_line(&mut answer)
+        .context("Failed to read confirm response")?;
+
+    if !should_commit_after_confirm(&answer, bytes_read) {
+        anyhow::bail!("Commit aborted.");
+    }
+
+    commit_message_via_stdin(final_msg).context("Failed to create git commit")?;
+    info!("Commit created successfully.");
+    Ok(())
 }

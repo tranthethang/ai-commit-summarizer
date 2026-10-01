@@ -50,7 +50,7 @@ sudo cp target/release/asum /usr/local/bin/
 - **Diff Reduction & Tree View**: Formats staged files as a clean directory tree and supports advanced diff reduction/truncation modes (by file or by hunk) to keep large diffs within AI model context limits.
 - **Context-Aware System Prompts**: Employs Few-Shot Prompting and precise system instructions to guarantee high-quality, concise, and structured commit proposals.
 - **Smart Diff Filtering**: Focuses only on relevant source code files, ignoring noise like lock files, large generated assets, or binaries.
-- **Clipboard Integration**: Copies the final message to your system clipboard automatically so you can paste it immediately.
+- **Clipboard Integration**: Copies a shell-safe (POSIX single-quoted) message to your clipboard for pasting after `git commit -m `, or use `-f` / `--force` to confirm and commit directly.
 
 ---
 
@@ -78,19 +78,33 @@ Simply stage your changes and run `asum` in your terminal:
 # 1. Stage your changes
 git add .
 
-# 2. Generate and copy the commit message
+# 2. Generate and copy a shell-safe commit message
 asum
+
+# 3. Paste after -m (clipboard is already POSIX single-quoted)
+git commit -m 
+# then Cmd+V / Ctrl+V
 ```
 
 ![Usage](./screenshot.png)
 
-`asum` will analyze your staged diff (or file list), output the suggested commit message, and copy it to your system clipboard. Simply press `Cmd+V` (or `Ctrl+V`) to paste it into your `git commit` command.
+`asum` prints the raw suggested commit message and copies a **POSIX single-quoted** form to the clipboard so special characters (`'`, `"`, `$`, backticks, `!`, newlines) do not break the shell when you paste after `git commit -m `.
+
+To generate and commit in one step (after a confirm prompt):
+
+```bash
+asum -f
+# or: asum --force
+# Prompt: Commit with this message? [Y/n]
+# Enter or y confirms; n aborts. Does not copy to the clipboard.
+```
 
 ### CLI Options
 
 The `asum` command supports the following options:
 
-- `asum` — Run the default summarization flow.
+- `asum` — Run the default summarization flow (print message; copy shell-safe form to clipboard).
+- `asum -f` or `asum --force` — After generating the message, ask for confirmation and run `git commit` with the full message (asum flag; not related to git `--force`). Does not copy to the clipboard.
 - `asum -v` or `asum --verbose` — Run with verbose logging. This will print the full diff/prompt sent to the AI, and the full JSON response received from the AI, which is useful for debugging.
 - `asum verify` — Verify your `asum.toml` configuration syntax and structure.
 - `asum --help` — Print help information.

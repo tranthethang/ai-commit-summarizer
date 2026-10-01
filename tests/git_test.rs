@@ -252,3 +252,66 @@ fn test_get_git_diff_not_a_repo() {
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("git diff failed"));
 }
+
+fn init_repo_with_identity(repo_path: &std::path::Path) {
+    Command::new("git")
+        .arg("init")
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+}
+
+#[test]
+fn test_commit_message_via_stdin_with_special_chars_and_body() {
+    let dir = tempdir().unwrap();
+    let repo_path = dir.path();
+    init_repo_with_identity(repo_path);
+
+    let file_path = repo_path.join("note.txt");
+    let mut file = File::create(&file_path).unwrap();
+    writeln!(file, "hello").unwrap();
+
+    Command::new("git")
+        .args(["add", "note.txt"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+
+    let message = "feat(cli): don't break \"$HOME\" or `cmd`!\n\n- Add quoting support.\n";
+    commit_message_via_stdin_in_path(message, repo_path.to_str().unwrap()).unwrap();
+
+    let log = Command::new("git")
+        .args(["log", "-1", "--pretty=%B"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    let log_text = String::from_utf8_lossy(&log.stdout);
+    assert!(log_text.contains("feat(cli): don't break \"$HOME\" or `cmd`!"));
+    assert!(log_text.contains("Add quoting support."));
+}
+
+#[test]
+fn test_commit_message_via_stdin_fails_with_nothing_staged() {
+    let dir = tempdir().unwrap();
+    let repo_path = dir.path();
+    init_repo_with_identity(repo_path);
+
+    let result = commit_message_via_stdin_in_path("chore: empty", repo_path.to_str().unwrap());
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("git commit failed")
+    );
+}
